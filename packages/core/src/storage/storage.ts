@@ -12,12 +12,15 @@ import { encrypt, decrypt } from '../utils/encryption';
  */
 export const accountStorage = {
   async save(account: Account): Promise<void> {
+    console.log('[Storage] Salvataggio account:', account.id, account.email);
     const db = await getDb();
     
     const encryptedAccessToken = await encrypt(account.tokens.accessToken);
     const encryptedRefreshToken = await encrypt(account.tokens.refreshToken);
 
-    await db.insert(schema.accounts).values({
+    console.log('[Storage] Token crittografati, accessToken length:', encryptedAccessToken.length);
+
+    const accountData = {
       id: account.id,
       email: account.email,
       provider: account.provider,
@@ -28,16 +31,49 @@ export const accountStorage = {
       tokenType: account.tokens.tokenType,
       createdAt: account.createdAt,
       updatedAt: account.updatedAt,
-    }).onConflictDoUpdate({
-      target: schema.accounts.id,
-      set: {
-        displayName: account.displayName,
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
-        expiresAt: account.tokens.expiresAt,
-        updatedAt: account.updatedAt,
-      },
+    };
+
+    console.log('[Storage] Dati account da salvare:', {
+      id: accountData.id,
+      email: accountData.email,
+      provider: accountData.provider,
+      displayName: accountData.displayName,
+      accessTokenType: Array.isArray(accountData.accessToken) ? 'Array' : typeof accountData.accessToken,
+      accessTokenLength: accountData.accessToken.length || accountData.accessToken.byteLength,
     });
+
+    try {
+      const insertResult = db.insert(schema.accounts).values(accountData);
+      const onConflictResult = insertResult.onConflictDoUpdate({
+        target: schema.accounts.id,
+        set: {
+          displayName: account.displayName,
+          accessToken: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
+          expiresAt: account.tokens.expiresAt,
+          updatedAt: account.updatedAt,
+        },
+      });
+      
+      // onConflictDoUpdate restituisce un oggetto con metodo set() che restituisce una Promise
+      if (onConflictResult && typeof onConflictResult.set === 'function') {
+        await onConflictResult.set({
+          displayName: account.displayName,
+          accessToken: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
+          expiresAt: account.tokens.expiresAt,
+          updatedAt: account.updatedAt,
+        });
+      } else if (onConflictResult && typeof onConflictResult.then === 'function') {
+        // Fallback: se restituisce direttamente una Promise
+        await onConflictResult;
+      }
+      
+      console.log('[Storage] Account salvato con successo');
+    } catch (error) {
+      console.error('[Storage] Errore nel salvataggio dell\'account:', error);
+      throw error;
+    }
   },
 
   async get(id: string): Promise<Account | null> {
@@ -55,8 +91,8 @@ export const accountStorage = {
       provider: row.provider as 'gmail' | 'outlook',
       displayName: row.displayName,
       tokens: {
-        accessToken: await decrypt(row.accessToken as Buffer),
-        refreshToken: await decrypt(row.refreshToken as Buffer),
+        accessToken: await decrypt(row.accessToken as Buffer | Uint8Array),
+        refreshToken: await decrypt(row.refreshToken as Buffer | Uint8Array),
         expiresAt: row.expiresAt,
         tokenType: row.tokenType,
       },
@@ -67,22 +103,48 @@ export const accountStorage = {
 
   async getAll(): Promise<Account[]> {
     const db = await getDb();
-    const results = await db.select().from(schema.accounts);
+    
+    // Per IndexedDB, select().from() restituisce un oggetto con then()
+    let results: any[];
+    try {
+      const selectQuery = db.select().from(schema.accounts);
+      // Se ha un metodo then, è thenable (Promise-like)
+      if (selectQuery && typeof selectQuery.then === 'function') {
+        results = await selectQuery;
+      } else {
+        // Altrimenti prova a chiamarlo direttamente
+        results = selectQuery;
+      }
+      // Assicurati che sia un array
+      results = Array.isArray(results) ? results : [];
+    } catch (error) {
+      console.error('[Storage] Errore nel caricamento degli account:', error);
+      results = [];
+    }
 
-    return Promise.all(results.map(async (row) => ({
-      id: row.id,
-      email: row.email,
-      provider: row.provider as 'gmail' | 'outlook',
-      displayName: row.displayName,
-      tokens: {
-        accessToken: await decrypt(row.accessToken as Buffer),
-        refreshToken: await decrypt(row.refreshToken as Buffer),
-        expiresAt: row.expiresAt,
-        tokenType: row.tokenType,
-      },
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    })));
+    console.log('[Storage] Account trovati:', results.length, results);
+
+    return Promise.all(results.map(async (row) => {
+      try {
+        return {
+          id: row.id,
+          email: row.email,
+          provider: row.provider as 'gmail' | 'outlook',
+          displayName: row.displayName,
+          tokens: {
+            accessToken: await decrypt(row.accessToken as Buffer | Uint8Array),
+            refreshToken: await decrypt(row.refreshToken as Buffer | Uint8Array),
+            expiresAt: row.expiresAt,
+            tokenType: row.tokenType,
+          },
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        };
+      } catch (error) {
+        console.error('[Storage] Errore nel decrittazione dell\'account:', row.id, error);
+        throw error;
+      }
+    }));
   },
 
   async delete(id: string): Promise<void> {

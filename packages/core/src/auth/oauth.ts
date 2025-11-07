@@ -16,45 +16,66 @@ export interface OAuthConfig {
 // Helper per ottenere variabili d'ambiente
 // In Vite, le variabili d'ambiente devono avere il prefisso VITE_ e sono accessibili tramite import.meta.env
 const getEnv = (key: string): string => {
-  // Usa import.meta.env (disponibile in Vite/browser)
-  // @ts-ignore - import.meta.env è disponibile in Vite
-  const viteEnv = (import.meta as any)?.env;
-  if (viteEnv) {
-    const value = viteEnv[`VITE_${key}`] || '';
-    // Debug: log solo in sviluppo
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      console.log(`[OAuth] getEnv(${key}):`, value ? 'Found' : 'Not found');
+  try {
+    // Prova diversi modi per accedere alle variabili d'ambiente
+    // @ts-ignore - import.meta.env è disponibile in Vite
+    if (typeof import.meta !== 'undefined' && (import.meta as any)?.env) {
+      const viteEnv = (import.meta as any).env;
+      const value = viteEnv[`VITE_${key}`] || '';
+      if (value) return value;
     }
-    return value;
+
+    // Fallback: prova a leggere da window.__VITE_ENV__ se disponibile
+    if (typeof window !== 'undefined' && (window as any).__VITE_ENV__) {
+      const value = (window as any).__VITE_ENV__[`VITE_${key}`] || '';
+      if (value) return value;
+    }
+
+    // Fallback: prova a leggere direttamente da process.env (se disponibile in sviluppo)
+    if (typeof process !== 'undefined' && process.env) {
+      const value = process.env[`VITE_${key}`] || '';
+      if (value) return value;
+    }
+  } catch (error) {
+    console.warn("[OAuth] Errore nel leggere variabili d'ambiente:", error);
   }
+
   return '';
 };
 
-const PROVIDER_CONFIGS: Record<AccountProvider, OAuthConfig> = {
-  gmail: {
-    clientId: getEnv('GOOGLE_CLIENT_ID'),
-    clientSecret: getEnv('GOOGLE_CLIENT_SECRET'),
-    authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-    tokenUrl: 'https://oauth2.googleapis.com/token',
-    redirectUri: 'http://localhost:1420',
-    scopes: [
-      'https://mail.google.com/',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile',
-    ],
-  },
-  outlook: {
-    clientId: getEnv('OUTLOOK_CLIENT_ID'),
-    clientSecret: getEnv('OUTLOOK_CLIENT_SECRET'),
-    authorizationUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    redirectUri: 'http://localhost:1420',
-    scopes: [
-      'https://outlook.office.com/IMAP.AccessAsUser.All',
-      'https://outlook.office.com/SMTP.Send',
-      'https://graph.microsoft.com/User.Read',
-    ],
-  },
+// Funzione per ottenere la configurazione di un provider (legge le variabili dinamicamente)
+const getProviderConfig = (provider: AccountProvider): OAuthConfig => {
+  if (provider === 'gmail') {
+    return {
+      clientId: getEnv('GOOGLE_CLIENT_ID'),
+      clientSecret: getEnv('GOOGLE_CLIENT_SECRET'),
+      authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenUrl: 'https://oauth2.googleapis.com/token',
+      redirectUri: 'http://localhost:1420/oauth/callback',
+      scopes: [
+        'https://mail.google.com/',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+      ],
+    };
+  }
+
+  if (provider === 'outlook') {
+    return {
+      clientId: getEnv('OUTLOOK_CLIENT_ID'),
+      clientSecret: getEnv('OUTLOOK_CLIENT_SECRET'),
+      authorizationUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+      tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+      redirectUri: 'http://localhost:1420/oauth/callback',
+      scopes: [
+        'https://outlook.office.com/IMAP.AccessAsUser.All',
+        'https://outlook.office.com/SMTP.Send',
+        'https://graph.microsoft.com/User.Read',
+      ],
+    };
+  }
+
+  throw new Error(`Provider non supportato: ${provider}`);
 };
 
 /**
@@ -63,79 +84,221 @@ const PROVIDER_CONFIGS: Record<AccountProvider, OAuthConfig> = {
  * e intercettando il redirect. Per ora usiamo un approccio semplificato.
  */
 export const startOAuth2 = async (provider: AccountProvider): Promise<OAuthTokens> => {
-  const config = PROVIDER_CONFIGS[provider];
-  
+  // Leggi la configurazione dinamicamente per assicurarti che le variabili d'ambiente siano caricate
+  const config = getProviderConfig(provider);
+
+  // Debug: verifica le variabili d'ambiente
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    console.log('[OAuth Debug]', {
+      provider,
+      clientId: config.clientId ? `${config.clientId.substring(0, 20)}...` : 'NOT FOUND',
+      clientSecret: config.clientSecret ? 'Found' : 'NOT FOUND',
+      redirectUri: config.redirectUri,
+      env: (import.meta as any)?.env ? 'Available' : 'Not available',
+    });
+  }
+
   // Verifica che le credenziali siano configurate
   if (!config.clientId || !config.clientSecret) {
+    const envKey = provider === 'gmail' ? 'GOOGLE' : 'OUTLOOK';
     throw new Error(
       `Credenziali OAuth2 non configurate per ${provider}. ` +
-      `Assicurati di aver impostato VITE_${provider === 'gmail' ? 'GOOGLE' : 'OUTLOOK'}_CLIENT_ID e VITE_${provider === 'gmail' ? 'GOOGLE' : 'OUTLOOK'}_CLIENT_SECRET nel file .env`
+        `Assicurati di aver impostato VITE_${envKey}_CLIENT_ID e VITE_${envKey}_CLIENT_SECRET nel file .env nella root del progetto. ` +
+        `Dopo aver aggiunto le variabili, riavvia il server di sviluppo.`
     );
   }
-  
+
   if (typeof window !== 'undefined') {
     try {
       // Verifica se siamo in Tauri
       const isTauri = (window as any).__TAURI__;
-      
-      if (isTauri) {
-        // In Tauri v2, apriamo una finestra del browser per OAuth
-        // Import dinamico usando una stringa che Vite non può risolvere staticamente
-        // @ts-ignore - import dinamico opzionale
-        const shellModule = await new Function('return import("@tauri-apps/api/shell")')().catch(() => null);
+
+      // Per Tauri e browser, usiamo lo stesso approccio con window.open
+      // perché funziona meglio per intercettare il redirect
+      {
+        // In ambiente browser normale, apriamo in una nuova finestra e intercettiamo il redirect
+        const params = new URLSearchParams({
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          response_type: 'code',
+          scope: config.scopes.join(' '),
+          access_type: 'offline',
+          prompt: 'consent',
+        });
+
+        const authUrl = `${config.authorizationUrl}?${params.toString()}`;
         
-        if (!shellModule) {
-          throw new Error('Modulo shell di Tauri non disponibile');
+        // Apri una nuova finestra per OAuth
+        const oauthWindow = window.open(authUrl, 'oauth', 'width=600,height=700');
+        
+        if (!oauthWindow) {
+          throw new Error('Impossibile aprire la finestra OAuth. Verifica che i popup non siano bloccati.');
         }
-        
-        const { open } = shellModule;
-        
-        // Costruisci l'URL di autorizzazione
-        const params = new URLSearchParams({
-          client_id: config.clientId,
-          redirect_uri: config.redirectUri,
-          response_type: 'code',
-          scope: config.scopes.join(' '),
-          access_type: 'offline',
-          prompt: 'consent',
+
+        // Crea una promessa per intercettare il codice
+        return new Promise<OAuthTokens>((resolve, reject) => {
+          let hasReceivedMessage = false;
+          
+          // Listener per intercettare i messaggi dalla finestra OAuth
+          const handleMessage = (event: MessageEvent) => {
+            console.log('[OAuth] Messaggio ricevuto:', event.data);
+            
+            // Verifica l'origine per sicurezza (in produzione, usa l'origine corretta)
+            if (event.data && event.data.type === 'oauth-code') {
+              hasReceivedMessage = true;
+              clearInterval(checkClosed);
+              window.removeEventListener('message', handleMessage);
+              
+              console.log('[OAuth] Codice ricevuto, scambio con token...');
+              
+              // Scambia il codice con i token
+              exchangeCodeForTokens(provider, config, event.data.code)
+                .then((tokens) => {
+                  console.log('[OAuth] Token ottenuti con successo');
+                  try {
+                    if (!oauthWindow.closed) {
+                      oauthWindow.close();
+                    }
+                  } catch (error) {
+                    // Ignora errori di Cross-Origin-Opener-Policy
+                  }
+                  resolve(tokens);
+                })
+                .catch((err) => {
+                  console.error('[OAuth] Errore nello scambio del codice:', err);
+                  try {
+                    if (!oauthWindow.closed) {
+                      oauthWindow.close();
+                    }
+                  } catch (error) {
+                    // Ignora errori di Cross-Origin-Opener-Policy
+                  }
+                  reject(err);
+                });
+            } else if (event.data && event.data.type === 'oauth-error') {
+              hasReceivedMessage = true;
+              clearInterval(checkClosed);
+              window.removeEventListener('message', handleMessage);
+              if (!oauthWindow.closed) {
+                oauthWindow.close();
+              }
+              reject(new Error(`Errore OAuth: ${event.data.error}`));
+            }
+          };
+
+          window.addEventListener('message', handleMessage);
+
+          // Verifica se la finestra è stata chiusa manualmente
+          // Aspetta un po' prima di controllare per dare tempo al redirect
+          const checkClosed = setInterval(() => {
+            try {
+              // Cross-Origin-Opener-Policy può bloccare window.closed, quindi gestiamo l'errore
+              if (oauthWindow.closed && !hasReceivedMessage) {
+                clearInterval(checkClosed);
+                window.removeEventListener('message', handleMessage);
+                reject(new Error('Finestra OAuth chiusa. Assicurati che il redirect URI sia configurato correttamente in Google Cloud Console: http://localhost:1420/oauth/callback'));
+              }
+            } catch (error) {
+              // Ignora errori di Cross-Origin-Opener-Policy
+              // Il messaggio postMessage gestirà comunque il callback
+            }
+          }, 1000);
+
+          // Timeout dopo 5 minuti
+          setTimeout(() => {
+            clearInterval(checkClosed);
+            window.removeEventListener('message', handleMessage);
+            if (!oauthWindow.closed) {
+              oauthWindow.close();
+            }
+            reject(new Error('Timeout durante l\'autorizzazione OAuth'));
+          }, 5 * 60 * 1000);
         });
-        
-        const authUrl = `${config.authorizationUrl}?${params.toString()}`;
-        
-        // Apri il browser per l'autorizzazione
-        await open(authUrl);
-        
-        // TODO: Implementare l'intercettazione del redirect e lo scambio del codice per il token
-        // Per ora, questo è un placeholder che richiede implementazione completa
-        // In produzione, dovresti usare un server locale o un deep link per intercettare il redirect
-        
-        throw new Error('OAuth2 flow non completamente implementato. Implementare intercettazione redirect.');
-      } else {
-        // In ambiente browser normale, apriamo in una nuova finestra
-        const params = new URLSearchParams({
-          client_id: config.clientId,
-          redirect_uri: config.redirectUri,
-          response_type: 'code',
-          scope: config.scopes.join(' '),
-          access_type: 'offline',
-          prompt: 'consent',
-        });
-        
-        const authUrl = `${config.authorizationUrl}?${params.toString()}`;
-        window.open(authUrl, 'oauth', 'width=600,height=700');
-        
-        throw new Error('OAuth2 flow non completamente implementato. Implementare intercettazione redirect.');
       }
     } catch (error) {
-      if (error instanceof Error && (error.message.includes('non disponibile') || error.message.includes('non configurate'))) {
+      if (
+        error instanceof Error &&
+        (error.message.includes('non disponibile') || error.message.includes('non configurate'))
+      ) {
         throw error;
       }
-      throw new Error(`Errore durante l'apertura del browser OAuth: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      throw new Error(
+        `Errore durante l'apertura del browser OAuth: ${
+          error instanceof Error ? error.message : 'Errore sconosciuto'
+        }`
+      );
     }
   }
 
   throw new Error('OAuth2 non disponibile in questo ambiente');
 };
+
+/**
+ * Scambia il codice di autorizzazione con i token OAuth
+ */
+const exchangeCodeForTokens = async (
+  provider: AccountProvider,
+  config: OAuthConfig,
+  code: string
+): Promise<OAuthTokens> => {
+  console.log('[OAuth] Scambio codice per token...', {
+    provider,
+    tokenUrl: config.tokenUrl,
+    redirectUri: config.redirectUri,
+    codeLength: code.length,
+  });
+
+  const requestBody = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    redirect_uri: config.redirectUri,
+  });
+
+  try {
+    const response = await fetch(config.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: requestBody,
+    });
+
+    const responseText = await response.text();
+    console.log('[OAuth] Risposta token:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: responseText.substring(0, 200),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Errore nello scambio del codice (${response.status}): ${responseText}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new Error(`Errore nel parsing della risposta: ${responseText}`);
+    }
+
+    if (!data.access_token) {
+      throw new Error(`Token di accesso non presente nella risposta: ${JSON.stringify(data)}`);
+    }
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+      tokenType: data.token_type || 'Bearer',
+    };
+  } catch (error) {
+    console.error('[OAuth] Errore nello scambio del codice:', error);
+    throw error;
+  }
+};
+
 
 /**
  * Aggiorna un token di accesso usando il refresh token
@@ -144,8 +307,8 @@ export const refreshAccessToken = async (
   provider: AccountProvider,
   refreshToken: string
 ): Promise<OAuthTokens> => {
-  const config = PROVIDER_CONFIGS[provider];
-  
+  const config = getProviderConfig(provider);
+
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
     headers: {
@@ -218,4 +381,3 @@ export const getUserInfo = async (
 
   throw new Error(`Provider non supportato: ${provider}`);
 };
-

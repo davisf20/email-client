@@ -12,6 +12,13 @@ export default defineConfig(({ mode }) => {
   console.log('VITE_GOOGLE_CLIENT_ID:', env.VITE_GOOGLE_CLIENT_ID ? 'Found' : 'Not found');
   
   return {
+  define: {
+    // Inietta le variabili d'ambiente come costanti nel codice
+    'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(env.VITE_GOOGLE_CLIENT_ID || ''),
+    'import.meta.env.VITE_GOOGLE_CLIENT_SECRET': JSON.stringify(env.VITE_GOOGLE_CLIENT_SECRET || ''),
+    'import.meta.env.VITE_OUTLOOK_CLIENT_ID': JSON.stringify(env.VITE_OUTLOOK_CLIENT_ID || ''),
+    'import.meta.env.VITE_OUTLOOK_CLIENT_SECRET': JSON.stringify(env.VITE_OUTLOOK_CLIENT_SECRET || ''),
+  },
   plugins: [react()],
   clearScreen: false,
   server: {

@@ -12,9 +12,12 @@ export const useAccounts = () => {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: async () => {
+      console.log('[useAccounts] Caricamento account...');
       const accounts = await accountStorage.getAll();
+      console.log('[useAccounts] Account caricati:', accounts.length, accounts);
       setAccounts(accounts);
       if (accounts.length > 0 && !useMailStore.getState().currentAccountId) {
+        console.log('[useAccounts] Impostazione account corrente:', accounts[0].id);
         setCurrentAccount(accounts[0].id);
       }
       return accounts;

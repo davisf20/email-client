@@ -88,14 +88,24 @@ VITE_OUTLOOK_CLIENT_SECRET=your_outlook_client_secret
    - **User support email**: la tua email
    - **Developer contact information**: la tua email
 4. Clicca "Save and Continue"
-5. Nella schermata "Scopes", clicca "Add or Remove Scopes"
-6. Seleziona questi scope:
-   - `https://mail.google.com/`
-   - `https://www.googleapis.com/auth/userinfo.email`
-   - `https://www.googleapis.com/auth/userinfo.profile`
-7. Clicca "Update" e poi "Save and Continue"
-8. Nella schermata "Test users", aggiungi la tua email come test user (necessario per app in modalità test)
-9. Clicca "Save and Continue" fino a completare
+5. **IMPORTANTE - Configurazione Scopes:**
+   - Nella schermata "Scopes", clicca **"Add or Remove Scopes"**
+   - Nella finestra che si apre, vedrai due colonne:
+     - **Left column**: Scope disponibili
+     - **Right column**: Scope selezionati
+   - Cerca e seleziona questi scope uno per uno:
+     - Cerca `gmail` e seleziona: **`https://mail.google.com/`** (Gmail API)
+     - Cerca `userinfo.email` e seleziona: **`https://www.googleapis.com/auth/userinfo.email`** (Userinfo Email)
+     - Cerca `userinfo.profile` e seleziona: **`https://www.googleapis.com/auth/userinfo.profile`** (Userinfo Profile)
+   - Oppure inserisci manualmente gli scope nella barra di ricerca in alto
+   - Clicca **"Update"** per confermare
+   - Clicca **"Save and Continue"**
+6. Nella schermata "Test users":
+   - Clicca **"+ ADD USERS"**
+   - Aggiungi la tua email (es. `davisfusco06@gmail.com`)
+   - Clicca **"ADD"**
+   - Clicca **"Save and Continue"**
+7. Rivedi le informazioni e clicca **"Back to Dashboard"**
 
 **Passo 4: Crea le credenziali OAuth 2.0**
 
