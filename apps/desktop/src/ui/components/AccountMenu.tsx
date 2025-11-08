@@ -73,7 +73,7 @@ export const AccountMenu: React.FC = () => {
   const handleLogout = async () => {
     if (!currentAccountId) return;
     
-    if (confirm('Vuoi disconnettere questo account? Dovrai riconnetterlo per accedere di nuovo.')) {
+    if (confirm('Do you want to disconnect this account? You will need to reconnect it to access again.')) {
       await handleRemoveAccount(currentAccountId);
       // Ricarica la pagina per resettare lo stato
       window.location.reload();
@@ -86,7 +86,7 @@ export const AccountMenu: React.FC = () => {
         <button
           className={cn(
             'p-2 rounded-full',
-            'bg-dark-surfaceHover hover:bg-dark-surfaceHover/80',
+            'bg-white/50 hover:bg-white/70',
             'transition-colors cursor-pointer'
           )}
         >
@@ -105,7 +105,7 @@ export const AccountMenu: React.FC = () => {
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className={cn(
-            'min-w-[280px] bg-dark-bg border border-dark-border rounded-2xl shadow-xl',
+            'min-w-[280px] bg-white/90 backdrop-blur-xl border border-black/10 rounded-2xl shadow-xl',
             'p-2 z-50',
             'animate-in fade-in-0 zoom-in-95'
           )}
@@ -116,15 +116,15 @@ export const AccountMenu: React.FC = () => {
           {accounts.length > 0 && (
             <>
               <div className="px-2 py-1.5 text-xs font-semibold text-dark-textMuted uppercase">
-                Account collegati
+                Connected Accounts
               </div>
               {accounts.map((account) => (
                 <DropdownMenu.Item
                   key={account.id}
                   className={cn(
                     'flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer',
-                    'outline-none focus:bg-dark-surfaceHover',
-                    currentAccountId === account.id && 'bg-blue-600/20'
+                    'outline-none focus:bg-white/80',
+                    currentAccountId === account.id && 'bg-selected-bg text-selected-text'
                   )}
                   onSelect={() => setCurrentAccount(account.id)}
                 >
@@ -134,7 +134,7 @@ export const AccountMenu: React.FC = () => {
                     size="sm"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className={cn('text-sm font-medium truncate', currentAccountId === account.id ? 'text-selected-text' : 'text-dark-text')}>
                       {account.displayName}
                     </p>
                     <p className="text-xs text-dark-textMuted truncate">
@@ -157,7 +157,7 @@ export const AccountMenu: React.FC = () => {
                   )}
                 </DropdownMenu.Item>
               ))}
-              <DropdownMenu.Separator className="h-px bg-dark-border my-2" />
+              <DropdownMenu.Separator className="h-px bg-black/10 my-2" />
             </>
           )}
 
@@ -177,7 +177,7 @@ export const AccountMenu: React.FC = () => {
                 <LogOut className="h-4 w-4" />
                 <span className="text-sm">Logout</span>
               </DropdownMenu.Item>
-              <DropdownMenu.Separator className="h-px bg-dark-border my-2" />
+              <DropdownMenu.Separator className="h-px bg-black/10 my-2" />
             </>
           )}
 
@@ -185,12 +185,12 @@ export const AccountMenu: React.FC = () => {
           {showProviderSelect ? (
             <div className="space-y-1">
               <div className="px-2 py-1.5 text-xs font-semibold text-dark-textMuted uppercase">
-                Seleziona provider
+                Select Provider
               </div>
               <DropdownMenu.Item
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer',
-                  'outline-none focus:bg-dark-surfaceHover',
+                  'outline-none focus:bg-white/80',
                   'disabled:opacity-50 disabled:cursor-not-allowed'
                 )}
                 disabled={isAddingAccount}
@@ -200,14 +200,14 @@ export const AccountMenu: React.FC = () => {
                   G
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-white">Gmail</p>
+                  <p className="text-sm font-medium text-dark-text">Gmail</p>
                   <p className="text-xs text-dark-textMuted">Google</p>
                 </div>
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer',
-                  'outline-none focus:bg-dark-surfaceHover',
+                  'outline-none focus:bg-white/80',
                   'disabled:opacity-50 disabled:cursor-not-allowed'
                 )}
                 disabled={isAddingAccount}
@@ -217,28 +217,28 @@ export const AccountMenu: React.FC = () => {
                   O
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-white">Outlook</p>
+                  <p className="text-sm font-medium text-dark-text">Outlook</p>
                   <p className="text-xs text-dark-textMuted">Microsoft</p>
                 </div>
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 className={cn(
                   'px-3 py-2 rounded-md cursor-pointer',
-                  'outline-none focus:bg-dark-surfaceHover text-sm text-dark-textMuted'
+                  'outline-none focus:bg-white/80 text-sm text-dark-textMuted'
                 )}
                 onSelect={(e) => {
                   e.preventDefault();
                   setShowProviderSelect(false);
                 }}
               >
-                ← Indietro
+                ← Back
               </DropdownMenu.Item>
             </div>
           ) : (
             <DropdownMenu.Item
               className={cn(
                 'flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer',
-                'outline-none focus:bg-dark-surfaceHover',
+                'outline-none focus:bg-white/80',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
               disabled={isAddingAccount}
@@ -248,8 +248,8 @@ export const AccountMenu: React.FC = () => {
               }}
             >
               <Plus className="h-4 w-4 text-blue-500" />
-              <span className="text-sm text-white">
-                {isAddingAccount ? 'Collegamento in corso...' : 'Aggiungi account'}
+              <span className="text-sm text-dark-text">
+                {isAddingAccount ? 'Connecting...' : 'Add account'}
               </span>
             </DropdownMenu.Item>
           )}

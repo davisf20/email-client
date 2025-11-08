@@ -11,6 +11,23 @@ import { Paperclip, Download, Reply, ReplyAll, Forward, ChevronUp } from 'lucide
 import { messageStorage } from '@mail-client/core';
 import type { MailMessage } from '@mail-client/core';
 
+/**
+ * Mappa i tag ai loro colori specifici
+ * Ogni tag ha un colore di testo e uno sfondo più tenue
+ */
+const getTagColors = (tag: string): { textColor: string; bgColor: string } => {
+  const tagColors: Record<string, { textColor: string; bgColor: string }> = {
+    'Importante': { textColor: '#dc2626', bgColor: '#fee2e2' }, // Rosso
+    'HR': { textColor: '#2563eb', bgColor: '#dbeafe' }, // Blu
+    'Personale': { textColor: '#16a34a', bgColor: '#dcfce7' }, // Verde
+    'Lavoro': { textColor: '#ea580c', bgColor: '#ffedd5' }, // Arancione
+    'Famiglia': { textColor: '#9333ea', bgColor: '#f3e8ff' }, // Viola
+    'Urgente': { textColor: '#dc2626', bgColor: '#fee2e2' }, // Rosso (stesso di Importante)
+  };
+  
+  return tagColors[tag] || { textColor: '#1a1a1a', bgColor: '#e4e9e2' }; // Default
+};
+
 export const MailViewer: React.FC = () => {
   const { messages, currentMessageId, setCurrentMessage } = useMailStore();
   const [threadMessages, setThreadMessages] = useState<MailMessage[]>([]);
@@ -46,8 +63,8 @@ export const MailViewer: React.FC = () => {
   
   if (!message) {
     return (
-      <div className="h-full bg-dark-surface flex items-center justify-center text-dark-textMuted">
-        <p>Seleziona un messaggio per visualizzarlo</p>
+      <div className="h-full bg-transparent flex items-center justify-center text-black">
+        <p>Select a message to view it</p>
       </div>
     );
   }
@@ -71,26 +88,33 @@ export const MailViewer: React.FC = () => {
   const messagesToShow = showOlderMessages ? threadGroup : [message];
 
   return (
-    <div className="h-full bg-dark-surface flex flex-col overflow-hidden">
+    <div className="h-full bg-transparent flex flex-col overflow-hidden">
       {/* Header - Oggetto con label e data/ora */}
       <div className="px-6 pt-6 pb-4 flex-shrink-0">
         <div className="flex items-start justify-between">
           <div className="flex-1 flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-semibold text-white">{message.subject}</h1>
+            <h1 className="text-xl font-semibold text-black">{message.subject}</h1>
             {messageLabels.length > 0 && (
               <div className="flex items-center gap-2">
-                {messageLabels.map((label) => (
-                  <span
-                    key={label}
-                    className="bg-blue-600 text-white px-3 py-1.5 text-xs font-medium rounded-full"
-                  >
-                    {label}
-                  </span>
-                ))}
+                {messageLabels.map((label) => {
+                  const colors = getTagColors(label);
+                  return (
+                    <span
+                      key={label}
+                      className="px-3 py-1.5 text-xs font-medium rounded-full"
+                      style={{
+                        backgroundColor: colors.bgColor,
+                        color: colors.textColor
+                      }}
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
-          <div className="text-sm text-dark-textMuted whitespace-nowrap ml-4">
+          <div className="text-sm text-black whitespace-nowrap ml-4">
             {format(message.date, "d MMM yyyy, HH:mm", { locale: it })}
           </div>
         </div>
@@ -104,10 +128,10 @@ export const MailViewer: React.FC = () => {
             <div className="mb-4 flex justify-center">
               <button
                 onClick={() => setShowOlderMessages(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-dark-bg hover:bg-dark-surfaceHover rounded-full text-sm text-dark-textMuted hover:text-white transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-white/90 rounded-full text-sm text-black transition-colors shadow-sm"
               >
                 <ChevronUp className="h-4 w-4" />
-                <span>Messaggi precedenti ({olderMessages.length})</span>
+                <span>Previous messages ({olderMessages.length})</span>
               </button>
             </div>
           )}
@@ -123,7 +147,7 @@ export const MailViewer: React.FC = () => {
               return (
                 <div
                   key={msg.id}
-                  className="bg-dark-bg rounded-3xl p-6 space-y-4"
+                  className="rounded-3xl p-6 space-y-4 shadow-sm bg-baby-powder"
                 >
                   {/* Mittente e destinatari */}
                   <div className="flex items-start gap-3">
@@ -134,17 +158,17 @@ export const MailViewer: React.FC = () => {
                     />
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-sm font-medium text-white">{msgSenderName}</p>
-                        <span className="text-xs text-dark-textMuted">
+                        <p className="text-sm font-medium text-black">{msgSenderName}</p>
+                        <span className="text-xs text-black">
                           {format(msg.date, "HH:mm", { locale: it })}
                         </span>
                       </div>
                       {index > 0 && (
-                        <p className="text-xs text-dark-textMuted mb-2">{msg.subject}</p>
+                        <p className="text-xs text-black mb-2">{msg.subject}</p>
                       )}
-                      <p className="text-xs text-dark-textMuted mb-2">&lt;{msg.from.address}&gt;</p>
+                      <p className="text-xs text-black mb-2">&lt;{msg.from.address}&gt;</p>
                       {/* Destinatari */}
-                      <div className="text-xs text-dark-textMuted space-y-0.5">
+                      <div className="text-xs text-black space-y-0.5">
                         <p>A: {msgToAddresses}</p>
                         {msgCcAddresses && <p>Cc: {msgCcAddresses}</p>}
                       </div>
@@ -153,26 +177,26 @@ export const MailViewer: React.FC = () => {
 
                   {/* Separatore */}
                   {index > 0 && (
-                    <div className="h-px bg-dark-border my-4" />
+                    <div className="h-px bg-black/10 my-4" />
                   )}
 
                   {/* Allegati */}
                   {msg.attachments.length > 0 && (
-                    <div className="p-3 bg-dark-surface rounded-2xl">
+                    <div className="p-3 bg-light-bg rounded-2xl">
                       <div className="flex items-center gap-2 mb-2">
-                        <Paperclip className="h-4 w-4 text-dark-textMuted" />
-                        <span className="text-sm font-medium text-white">Allegati ({msg.attachments.length})</span>
+                        <Paperclip className="h-4 w-4 text-black" />
+                            <span className="text-sm font-medium text-black">Attachments ({msg.attachments.length})</span>
                       </div>
                       <div className="space-y-2">
                         {msg.attachments.map((att, idx) => (
                           <div
                             key={`${msg.id}-att-${idx}-${att.filename}`}
-                            className="flex items-center justify-between p-2 bg-dark-bg rounded-2xl"
+                            className="flex items-center justify-between p-2 bg-white rounded-2xl"
                           >
                             <div className="flex items-center gap-2">
-                              <Paperclip className="h-3 w-3 text-dark-textMuted" />
-                              <span className="text-sm text-dark-textMuted">{att.filename}</span>
-                              <span className="text-xs text-dark-textMuted">
+                              <Paperclip className="h-3 w-3 text-black" />
+                              <span className="text-sm text-black">{att.filename}</span>
+                              <span className="text-xs text-black">
                                 ({(att.size / 1024).toFixed(1)} KB)
                               </span>
                             </div>
@@ -186,15 +210,15 @@ export const MailViewer: React.FC = () => {
                   )}
 
                   {/* Contenuto del messaggio */}
-                  <div className="prose prose-invert max-w-none text-white">
+                  <div className="prose max-w-none text-black">
                     {msg.html ? (
                       <div
                         dangerouslySetInnerHTML={{ __html: msg.html }}
-                        className="text-white"
+                        className="text-black"
                       />
                     ) : (
-                      <pre className="whitespace-pre-wrap text-white font-sans">
-                        {msg.text || '(Nessun contenuto)'}
+                      <pre className="whitespace-pre-wrap text-black font-sans">
+                        {msg.text || '(No content)'}
                       </pre>
                     )}
                   </div>
@@ -203,22 +227,22 @@ export const MailViewer: React.FC = () => {
                 {isCurrentMessage && (
                   <div className="flex items-center gap-2 pt-4 justify-end">
                     <button
-                      className="flex items-center gap-2 px-4 py-2 bg-dark-surface hover:bg-dark-surfaceHover rounded-full text-sm text-dark-textMuted hover:text-white transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <Reply className="h-4 w-4" />
-                      <span>Rispondi</span>
+                      <span>Reply</span>
                     </button>
                     <button
-                      className="flex items-center gap-2 px-4 py-2 bg-dark-surface hover:bg-dark-surfaceHover rounded-full text-sm text-dark-textMuted hover:text-white transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <ReplyAll className="h-4 w-4" />
-                      <span>Rispondi a tutti</span>
+                      <span>Reply All</span>
                     </button>
                     <button
-                      className="flex items-center gap-2 px-4 py-2 bg-dark-surface hover:bg-dark-surfaceHover rounded-full text-sm text-dark-textMuted hover:text-white transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <Forward className="h-4 w-4" />
-                      <span>Inoltra</span>
+                      <span>Forward</span>
                     </button>
                   </div>
                 )}

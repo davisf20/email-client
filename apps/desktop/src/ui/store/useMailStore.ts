@@ -25,6 +25,8 @@ interface MailState {
   isComposeOpen: boolean;
   isSettingsOpen: boolean;
   searchQuery: string;
+  selectedTag: string | null; // Tag selezionato per il filtro
+  availableTags: string[]; // Lista di tutti i tag disponibili (escluso "All")
   
   // Actions
   setAccounts: (accounts: Account[]) => void;
@@ -46,6 +48,9 @@ interface MailState {
   setComposeOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
+  setSelectedTag: (tag: string | null) => void;
+  addAvailableTag: (tag: string) => void;
+  removeAvailableTag: (tag: string) => void;
 }
 
 export const useMailStore = create<MailState>((set) => ({
@@ -53,7 +58,7 @@ export const useMailStore = create<MailState>((set) => ({
   accounts: [],
   currentAccountId: null,
   folders: [],
-  currentFolderId: null,
+  currentFolderId: 'inbox', // Imposta inbox come default
   messages: [],
   currentMessageId: null,
   settings: {
@@ -65,6 +70,8 @@ export const useMailStore = create<MailState>((set) => ({
   isComposeOpen: false,
   isSettingsOpen: false,
   searchQuery: '',
+  selectedTag: null,
+  availableTags: ['Importante', 'HR'], // Tag predefiniti
   
   // Actions
   setAccounts: (accounts) => set({ accounts }),
@@ -101,5 +108,15 @@ export const useMailStore = create<MailState>((set) => ({
   setComposeOpen: (open) => set({ isComposeOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setSearchQuery: (query) => set({ searchQuery: query }),
+  setSelectedTag: (tag) => set({ selectedTag: tag }),
+  addAvailableTag: (tag) => set((state) => {
+    if (!state.availableTags.includes(tag)) {
+      return { availableTags: [...state.availableTags, tag] };
+    }
+    return state;
+  }),
+  removeAvailableTag: (tag) => set((state) => ({
+    availableTags: state.availableTags.filter((t) => t !== tag),
+  })),
 }));
 

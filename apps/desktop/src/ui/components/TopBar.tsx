@@ -2,16 +2,24 @@
  * Componente TopBar per azioni globali e ricerca
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Trash2, Archive, Folder, Star, Mail, RefreshCw, Plus, X } from 'lucide-react';
 import { useMailStore } from '../store/useMailStore';
 import { useSyncMessages } from '../hooks/useMessages';
-import { Button, Input } from '@mail-client/ui-kit';
+import { Button, Input, cn } from '@mail-client/ui-kit';
 
 export const TopBar: React.FC = () => {
   const { mutate: syncMessages, isPending: isSyncing } = useSyncMessages();
-  const { currentMessageId, messages, updateMessage, removeMessage } = useMailStore();
-  const [labels, setLabels] = useState(['Importante', 'HR', 'Personale']);
+  const { 
+    currentMessageId, 
+    messages, 
+    updateMessage, 
+    removeMessage, 
+    selectedTag, 
+    setSelectedTag,
+    availableTags,
+    addAvailableTag,
+  } = useMailStore();
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
 
@@ -62,45 +70,68 @@ export const TopBar: React.FC = () => {
   };
 
   const handleAddLabel = () => {
-    if (newLabelName.trim() && !labels.includes(newLabelName.trim())) {
-      setLabels([...labels, newLabelName.trim()]);
+    const tagName = newLabelName.trim();
+    if (tagName && !availableTags.includes(tagName)) {
+      // Crea il nuovo tag
+      addAvailableTag(tagName);
       setNewLabelName('');
       setIsAddingLabel(false);
     }
   };
 
-  const handleRemoveLabel = (label: string) => {
-    setLabels(labels.filter((l) => l !== label));
+  const handleTagClick = (tag: string) => {
+    if (tag === 'All') {
+      setSelectedTag(null); // "All" significa nessun filtro
+    } else if (selectedTag === tag) {
+      setSelectedTag(null); // Deseleziona se già selezionato
+    } else {
+      setSelectedTag(tag);
+    }
   };
 
   return (
-    <div className="h-14 bg-dark-surface/60 backdrop-blur-md flex items-center justify-between px-4 rounded-3xl">
+    <div 
+      className="h-14 flex items-center justify-between px-4 rounded-3xl bg-anti-flash-white-90"
+      style={{ 
+        WebkitAppRegion: 'no-drag'
+      }}
+    >
       {/* Left side - Labels */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 bg-dark-bg/30 rounded-full p-1">
-          {labels.map((label) => (
-            <div
-              key={label}
-              className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center gap-1 rounded-full p-1">
+          {/* Tag "All" sempre presente e non eliminabile */}
+          <button
+            onClick={() => handleTagClick('All')}
+            className={cn(
+              'px-3 py-1.5 rounded-xl text-sm font-medium transition-colors',
+              selectedTag === null || selectedTag === 'All'
+                ? 'bg-silver-35 text-black'
+                : 'bg-silver-25 text-black hover:bg-silver-35'
+            )}
+          >
+            All
+          </button>
+          
+          {/* Altri tag disponibili */}
+          {availableTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => handleTagClick(tag)}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-sm font-medium transition-colors',
+                selectedTag === tag
+                  ? 'bg-silver-35 text-black'
+                  : 'bg-silver-25 text-black hover:bg-silver-35'
+              )}
             >
-              {label}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRemoveLabel(label);
-                }}
-                className="hover:bg-blue-700 rounded-full p-0.5"
-                type="button"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
+              {tag}
+            </button>
           ))}
           {isAddingLabel ? (
             <div className="flex items-center gap-1">
               <Input
                 type="text"
-                placeholder="Nome label..."
+                placeholder="Label name..."
                 value={newLabelName}
                 onChange={(e) => setNewLabelName(e.target.value)}
                 onKeyDown={(e) => {
@@ -111,7 +142,7 @@ export const TopBar: React.FC = () => {
                     setNewLabelName('');
                   }
                 }}
-                className="h-7 px-2 text-sm bg-dark-surface rounded-full"
+                className="h-7 px-2 text-sm bg-white rounded-xl border border-black/10"
                 autoFocus
               />
               <Button
@@ -137,71 +168,76 @@ export const TopBar: React.FC = () => {
           ) : (
             <button
               onClick={() => setIsAddingLabel(true)}
-              className="px-3 py-1 rounded-full text-dark-textMuted hover:text-white text-sm font-medium flex items-center gap-1"
+              className="px-3 py-1 rounded-md text-black hover:text-black/80 text-sm font-medium flex items-center gap-1"
             >
               <Plus className="h-3 w-3" />
-              Nuovo
+              New
             </button>
           )}
         </div>
       </div>
 
       {/* Right side - Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleDelete}
           disabled={!currentMessageId}
-          title="Elimina"
+          title="Delete"
+          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-4 w-4 text-black" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleArchive}
           disabled={!currentMessageId}
-          title="Archivia"
+          title="Archive"
+          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
-          <Archive className="h-4 w-4" />
+          <Archive className="h-4 w-4 text-black" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleMove}
           disabled={!currentMessageId}
-          title="Sposta"
+          title="Move"
+          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
-          <Folder className="h-4 w-4" />
+          <Folder className="h-4 w-4 text-black" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleFlagImportant}
           disabled={!currentMessageId}
-          title="Segna come importante"
-          className={currentMessage?.isImportant ? 'text-yellow-500' : ''}
+          title="Mark as important"
+          className={cn(currentMessage?.isImportant ? 'text-yellow-500' : 'text-black', 'bg-silver-25 hover:bg-silver-35 rounded-xl')}
         >
-          <Star className={`h-4 w-4 ${currentMessage?.isImportant ? 'fill-yellow-500' : ''}`} />
+          <Star className={`h-4 w-4 ${currentMessage?.isImportant ? 'fill-yellow-500 text-yellow-500' : 'text-black'}`} />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleMarkUnread}
           disabled={!currentMessageId}
-          title="Segna come non letto"
+          title="Mark as unread"
+          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
-          <Mail className="h-4 w-4" />
+          <Mail className="h-4 w-4 text-black" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleSync}
           disabled={isSyncing}
-          title="Sincronizza email"
+          title="Sync emails"
+          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
-          <RefreshCw className={isSyncing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          <RefreshCw className={isSyncing ? 'h-4 w-4 animate-spin text-black' : 'h-4 w-4 text-black'} />
         </Button>
       </div>
     </div>

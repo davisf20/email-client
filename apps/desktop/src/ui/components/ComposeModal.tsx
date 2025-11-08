@@ -34,7 +34,7 @@ export const ComposeModal: React.FC = () => {
         )}>
           <div className="flex items-center justify-between p-4 border-b border-dark-border">
             <Dialog.Title className="text-lg font-semibold text-white">
-              Nuovo messaggio
+              New Message
             </Dialog.Title>
             <Dialog.Close asChild>
               <button className="text-dark-textMuted hover:text-white">
@@ -79,23 +79,23 @@ export const ComposeModal: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-dark-textMuted mb-1">
-                Oggetto
+                Subject
               </label>
               <Input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Oggetto del messaggio"
+                placeholder="Message subject"
               />
             </div>
 
             <div className="flex-1">
               <label className="block text-sm font-medium text-dark-textMuted mb-1">
-                Messaggio
+                Message
               </label>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="Scrivi il tuo messaggio..."
+                placeholder="Write your message..."
                 className={cn(
                   'w-full h-full min-h-[300px]',
                   'rounded-lg border border-dark-border bg-dark-bg/50',
@@ -115,11 +115,11 @@ export const ComposeModal: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <Button variant="secondary" onClick={() => setComposeOpen(false)}>
-                Annulla
+                Cancel
               </Button>
               <Button onClick={handleSend}>
                 <Send className="h-4 w-4 mr-2" />
-                Invia
+                Send
               </Button>
             </div>
           </div>
