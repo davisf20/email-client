@@ -70,6 +70,16 @@ export const AccountMenu: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    if (!currentAccountId) return;
+    
+    if (confirm('Vuoi disconnettere questo account? Dovrai riconnetterlo per accedere di nuovo.')) {
+      await handleRemoveAccount(currentAccountId);
+      // Ricarica la pagina per resettare lo stato
+      window.location.reload();
+    }
+  };
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -95,7 +105,7 @@ export const AccountMenu: React.FC = () => {
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className={cn(
-            'min-w-[280px] bg-dark-surface border border-dark-border rounded-lg shadow-xl',
+            'min-w-[280px] bg-dark-bg border border-dark-border rounded-2xl shadow-xl',
             'p-2 z-50',
             'animate-in fade-in-0 zoom-in-95'
           )}
@@ -147,6 +157,26 @@ export const AccountMenu: React.FC = () => {
                   )}
                 </DropdownMenu.Item>
               ))}
+              <DropdownMenu.Separator className="h-px bg-dark-border my-2" />
+            </>
+          )}
+
+          {/* Pulsante Logout */}
+          {currentAccountId && (
+            <>
+              <DropdownMenu.Item
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer',
+                  'outline-none focus:bg-red-600/20 text-red-400 hover:bg-red-600/20'
+                )}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  handleLogout();
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="text-sm">Logout</span>
+              </DropdownMenu.Item>
               <DropdownMenu.Separator className="h-px bg-dark-border my-2" />
             </>
           )}

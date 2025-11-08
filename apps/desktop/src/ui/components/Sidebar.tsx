@@ -23,7 +23,7 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <div className="w-64 bg-dark-surface border-r border-dark-border flex flex-col h-full">
+    <div className="w-64 bg-dark-bg border border-dark-border rounded-2xl flex flex-col h-full m-2 overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-dark-border">
         <div className="flex items-center justify-between mb-4">

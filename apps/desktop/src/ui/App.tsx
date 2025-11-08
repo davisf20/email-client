@@ -10,6 +10,7 @@ import { MailViewer } from './components/MailViewer';
 import { ComposeModal } from './components/ComposeModal';
 import { FloatingMenu } from './components/FloatingMenu';
 import { useMailStore } from './store/useMailStore';
+import { syncFolders } from '@mail-client/core';
 
 const App: React.FC = () => {
   const { data: accounts } = useAccounts();
@@ -25,23 +26,38 @@ const App: React.FC = () => {
   // Carica le cartelle quando cambia l'account
   useEffect(() => {
     if (currentAccountId && storeAccounts.length > 0) {
-      // TODO: Caricare le cartelle dall'account
-      // Per ora usiamo cartelle di default
-      setFolders([]);
+      const account = storeAccounts.find((a) => a.id === currentAccountId);
+      if (account) {
+        // Sincronizza le cartelle quando cambia l'account
+        syncFolders(account).then((folders) => {
+          setFolders(folders);
+          // Se non c'è una cartella selezionata o è una cartella di default, seleziona la inbox
+          if (!currentFolderId || currentFolderId === 'inbox') {
+            const inboxFolder = folders.find((f) => f.path === 'INBOX' || f.name === 'INBOX');
+            if (inboxFolder) {
+              setCurrentFolder(inboxFolder.id);
+            } else if (folders.length > 0) {
+              setCurrentFolder(folders[0].id);
+            }
+          }
+        }).catch((error) => {
+          console.error('Errore nel caricamento delle cartelle:', error);
+        });
+      }
     }
-  }, [currentAccountId, storeAccounts, setFolders]);
+  }, [currentAccountId, storeAccounts, setFolders, currentFolderId, setCurrentFolder]);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-dark-bg p-4 gap-4">
       <TopBar />
       <div className="flex-1 flex gap-4 overflow-hidden">
         {/* Prima isola - Mail List (più piccola) */}
-        <div className="w-96 bg-dark-surface rounded-xl border border-dark-border shadow-lg overflow-hidden flex-shrink-0">
+        <div className="w-96 bg-dark-surface rounded-[2rem] shadow-lg overflow-hidden flex-shrink-0">
           <MailList />
         </div>
         
         {/* Seconda isola - Mail Viewer */}
-        <div className="flex-1 bg-dark-surface rounded-xl border border-dark-border shadow-lg overflow-hidden">
+        <div className="flex-1 bg-dark-surface rounded-[2rem] shadow-lg overflow-hidden">
           <MailViewer />
         </div>
       </div>

@@ -74,14 +74,14 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <div className="h-14 bg-dark-surface/60 backdrop-blur-md border-b border-dark-border flex items-center justify-between px-4 rounded-xl">
+    <div className="h-14 bg-dark-surface/60 backdrop-blur-md flex items-center justify-between px-4 rounded-3xl">
       {/* Left side - Labels */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 bg-dark-bg rounded-full p-1">
+        <div className="flex items-center gap-1 bg-dark-bg/30 rounded-full p-1">
           {labels.map((label) => (
             <div
               key={label}
-              className="px-3 py-1 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+              className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
             >
               {label}
               <button
@@ -111,7 +111,7 @@ export const TopBar: React.FC = () => {
                     setNewLabelName('');
                   }
                 }}
-                className="h-7 px-2 text-sm bg-dark-surface border-dark-border"
+                className="h-7 px-2 text-sm bg-dark-surface rounded-full"
                 autoFocus
               />
               <Button
