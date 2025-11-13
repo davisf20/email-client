@@ -3,12 +3,13 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { format } from 'date-fns';
-import { it } from 'date-fns/locale';
+import * as dateFns from 'date-fns';
+import * as dateFnsLocale from 'date-fns/locale/it';
+const format = dateFns.format;
+const it = dateFnsLocale.it;
 import { useMailStore } from '../store/useMailStore';
-import { Avatar, Badge, Button } from '@mail-client/ui-kit';
+import { Avatar, Button } from '@mail-client/ui-kit';
 import { Paperclip, Download, Reply, ReplyAll, Forward, ChevronUp } from 'lucide-react';
-import { messageStorage } from '@mail-client/core';
 import type { MailMessage } from '@mail-client/core';
 
 /**
@@ -29,7 +30,7 @@ const getTagColors = (tag: string): { textColor: string; bgColor: string } => {
 };
 
 export const MailViewer: React.FC = () => {
-  const { messages, currentMessageId, setCurrentMessage } = useMailStore();
+  const { messages, currentMessageId, setComposeOpen, currentAccountId, accounts } = useMailStore();
   const [threadMessages, setThreadMessages] = useState<MailMessage[]>([]);
   const [showOlderMessages, setShowOlderMessages] = useState(false);
   
@@ -69,10 +70,6 @@ export const MailViewer: React.FC = () => {
     );
   }
 
-  const senderName = message.from.name || message.from.address.split('@')[0];
-  const toAddresses = message.to.map((addr) => addr.address).join(', ');
-  const ccAddresses = message.cc?.map((addr) => addr.address).join(', ');
-  
   // Label del messaggio (basati su flags e isImportant)
   const messageLabels: string[] = [];
   if (message.isImportant) {
@@ -84,8 +81,50 @@ export const MailViewer: React.FC = () => {
 
   // Messaggi più vecchi da mostrare
   const olderMessages = threadGroup.slice(0, -1);
-  const currentMessageIndex = threadGroup.length - 1;
   const messagesToShow = showOlderMessages ? threadGroup : [message];
+
+  const handleReply = () => {
+    if (!message) return;
+    const account = accounts.find((a) => a.id === currentAccountId);
+    if (!account) return;
+    
+    const originalBody = message.text || message.html?.replace(/<[^>]*>/g, '') || '';
+    setComposeOpen(true, {
+      to: message.from.address,
+      subject: `Re: ${message.subject}`,
+      body: `\n\n--- Original Message ---\nFrom: ${message.from.name || message.from.address}\nDate: ${format(message.date, "d MMM yyyy, HH:mm", { locale: it })}\n\n${originalBody}`,
+    });
+  };
+
+  const handleReplyAll = () => {
+    if (!message) return;
+    const account = accounts.find((a) => a.id === currentAccountId);
+    if (!account) return;
+    
+    const allRecipients = [
+      message.from.address,
+      ...message.to.map(addr => typeof addr === 'string' ? addr : addr.address),
+      ...(message.cc || []).map(addr => typeof addr === 'string' ? addr : addr.address)
+    ].filter(addr => addr !== account.email);
+    
+    const originalBody = message.text || message.html?.replace(/<[^>]*>/g, '') || '';
+    setComposeOpen(true, {
+      to: allRecipients.join(', '),
+      cc: message.cc?.map(addr => typeof addr === 'string' ? addr : addr.address).join(', ') || '',
+      subject: `Re: ${message.subject}`,
+      body: `\n\n--- Original Message ---\nFrom: ${message.from.name || message.from.address}\nDate: ${format(message.date, "d MMM yyyy, HH:mm", { locale: it })}\n\n${originalBody}`,
+    });
+  };
+
+  const handleForward = () => {
+    if (!message) return;
+    
+    const originalBody = message.text || message.html?.replace(/<[^>]*>/g, '') || '';
+    setComposeOpen(true, {
+      subject: `Fwd: ${message.subject}`,
+      body: `\n\n--- Forwarded Message ---\nFrom: ${message.from.name || message.from.address}\nDate: ${format(message.date, "d MMM yyyy, HH:mm", { locale: it })}\nTo: ${message.to.map(addr => typeof addr === 'string' ? addr : addr.address).join(', ')}\n\n${originalBody}`,
+    });
+  };
 
   return (
     <div className="h-full bg-transparent flex flex-col overflow-hidden">
@@ -227,18 +266,21 @@ export const MailViewer: React.FC = () => {
                 {isCurrentMessage && (
                   <div className="flex items-center gap-2 pt-4 justify-end">
                     <button
+                      onClick={handleReply}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <Reply className="h-4 w-4" />
                       <span>Reply</span>
                     </button>
                     <button
+                      onClick={handleReplyAll}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <ReplyAll className="h-4 w-4" />
                       <span>Reply All</span>
                     </button>
                     <button
+                      onClick={handleForward}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-black transition-colors bg-silver-25 hover:bg-silver-35"
                     >
                       <Forward className="h-4 w-4" />

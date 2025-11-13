@@ -10,10 +10,8 @@ import { Button, cn } from '@mail-client/ui-kit';
 import { AccountMenu } from './AccountMenu';
 
 export const Sidebar: React.FC = () => {
-  const { accounts, currentAccountId, folders, currentFolderId, setCurrentFolder, setSettingsOpen } = useMailStore();
+  const { folders, currentFolderId, setCurrentFolder, setSettingsOpen } = useMailStore();
   useAccounts();
-  
-  const currentAccount = accounts.find((a) => a.id === currentAccountId);
   
   const defaultFolders = [
     { id: 'inbox', name: 'Inbox', icon: Inbox },

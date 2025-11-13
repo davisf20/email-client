@@ -19,8 +19,13 @@ export interface SmtpConfig {
 
 /**
  * Ottiene la configurazione SMTP per un provider
+ * Nota: Non utilizzato attualmente, mantenuto per riferimento futuro
  */
-const getSmtpConfig = (provider: 'gmail' | 'outlook', email: string, accessToken: string): SmtpConfig => {
+// @ts-ignore - Funzione non utilizzata ma mantenuta per riferimento
+const _getSmtpConfig = (_provider: 'gmail' | 'outlook', _email: string, _accessToken: string): SmtpConfig => {
+  const provider = _provider;
+  const email = _email;
+  const accessToken = _accessToken;
   if (provider === 'gmail') {
     return {
       host: 'smtp.gmail.com',
@@ -52,14 +57,23 @@ const getSmtpConfig = (provider: 'gmail' | 'outlook', email: string, accessToken
 
 /**
  * Invia un'email
- * Nota: Questa funzione richiede nodemailer che è disponibile solo in Node.js.
- * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
+ * Usa i comandi Tauri se disponibili, altrimenti errore
  */
 export const sendEmail = async (
   account: Account,
   message: ComposeMessage
 ): Promise<void> => {
-  // TODO: Implementare come comando Tauri Rust
-  console.warn('sendEmail non disponibile nel browser. Implementare come comando Tauri.');
-  throw new Error('sendEmail non disponibile nel browser. Implementare come comando Tauri.');
+  // Prova a usare i comandi Tauri se disponibili
+  try {
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      const { sendEmailTauri } = await import('./tauri-smtp');
+      return await sendEmailTauri(account, message);
+    }
+  } catch (error) {
+    console.error('[SMTP] Errore nell\'invio tramite Tauri:', error);
+    throw error;
+  }
+  
+  // Se non siamo in Tauri, errore
+  throw new Error('sendEmail disponibile solo in ambiente Tauri. Implementare comando Rust.');
 };

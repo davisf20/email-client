@@ -18,8 +18,13 @@ export interface ImapConfig {
 
 /**
  * Ottiene la configurazione IMAP per un provider
+ * Nota: Non utilizzato attualmente, mantenuto per riferimento futuro
  */
-const getImapConfig = (provider: 'gmail' | 'outlook', email: string, accessToken: string): ImapConfig => {
+// @ts-ignore - Funzione non utilizzata ma mantenuta per riferimento
+const _getImapConfig = (_provider: 'gmail' | 'outlook', _email: string, _accessToken: string): ImapConfig => {
+  const provider = _provider;
+  const email = _email;
+  const accessToken = _accessToken;
   if (provider === 'gmail') {
     return {
       host: 'imap.gmail.com',
@@ -53,79 +58,170 @@ const getImapConfig = (provider: 'gmail' | 'outlook', email: string, accessToken
  * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
  */
 export const createImapClient = async (
-  account: Account
+  _account: Account
 ): Promise<any> => {
   // TODO: Implementare come comando Tauri Rust
   throw new Error('IMAP client non disponibile nel browser. Implementare come comando Tauri.');
 };
 
+// Lock per evitare chiamate multiple simultanee a syncFolders per lo stesso account
+const syncFoldersLocks = new Map<string, Promise<MailFolder[]>>();
+
 /**
  * Sincronizza le cartelle di un account
- * Nota: Questa funzione richiede imapflow che è disponibile solo in Node.js.
- * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
- * 
- * Per ora restituisce cartelle mock per testare l'UI.
+ * Usa i comandi Tauri se disponibili, altrimenti fallback a mock
+ * Evita chiamate multiple simultanee per lo stesso account
  */
 export const syncFolders = async (account: Account): Promise<MailFolder[]> => {
-  // TODO: Implementare come comando Tauri Rust
-  console.log('[IMAP Mock] Sincronizzazione cartelle per account:', account.email);
+  // Se c'è già una chiamata in corso per questo account, restituisci quella promessa
+  const existingLock = syncFoldersLocks.get(account.id);
+  if (existingLock) {
+    console.log('[IMAP] Chiamata syncFolders già in corso per account:', account.email, '- riuso la promessa esistente');
+    return existingLock;
+  }
   
-  // Cartelle mock per testare l'UI
-  const mockFolders: MailFolder[] = [
-    {
-      id: `${account.id}-inbox`,
-      accountId: account.id,
-      name: 'INBOX',
-      path: 'INBOX',
-      unreadCount: 0,
-      totalCount: 0,
-      syncAt: Date.now(),
-    },
-    {
-      id: `${account.id}-sent`,
-      accountId: account.id,
-      name: 'Sent',
-      path: '[Gmail]/Sent Mail',
-      unreadCount: 0,
-      totalCount: 0,
-      syncAt: Date.now(),
-    },
-    {
-      id: `${account.id}-drafts`,
-      accountId: account.id,
-      name: 'Drafts',
-      path: '[Gmail]/Drafts',
-      unreadCount: 0,
-      totalCount: 0,
-      syncAt: Date.now(),
-    },
-    {
-      id: `${account.id}-archive`,
-      accountId: account.id,
-      name: 'Archive',
-      path: '[Gmail]/All Mail',
-      unreadCount: 0,
-      totalCount: 0,
-      syncAt: Date.now(),
-    },
-  ];
+  // Crea una nuova promessa e la aggiungi al lock
+  const syncPromise = (async () => {
+    try {
+      // Prova a usare i comandi Tauri se disponibili
+      try {
+        // Controlla se siamo in ambiente Tauri - verifica che window.__TAURI__ esista
+        // Questo è il modo più affidabile per verificare se siamo in Tauri
+        const isTauri = typeof window !== 'undefined' && 
+                        ((window as any).__TAURI__ !== undefined || 
+                         (window as any).__TAURI_INTERNALS__ !== undefined);
+        
+        console.log('[IMAP] Controllo Tauri:', { 
+          isTauri, 
+          hasWindow: typeof window !== 'undefined',
+          hasTAURI: typeof window !== 'undefined' ? (window as any).__TAURI__ !== undefined : false,
+          hasTAURI_INTERNALS: typeof window !== 'undefined' ? (window as any).__TAURI_INTERNALS__ !== undefined : false,
+        });
+        
+        if (isTauri) {
+          console.log('[IMAP] Tauri disponibile, uso comandi Rust');
+          const { syncFoldersTauri } = await import('./tauri-imap');
+          const folders = await syncFoldersTauri(account);
+          console.log('[IMAP] Cartelle sincronizzate da Rust:', folders.length);
+          return folders;
+        } else {
+          console.warn('[IMAP] Tauri non disponibile, uso mock. Assicurati di usare "pnpm tauri:dev" invece di "pnpm dev"');
+        }
+      } catch (error) {
+        console.error('[IMAP] Errore nei comandi Tauri, uso mock:', error);
+      }
+      
+      // Fallback a mock per sviluppo/test
+      console.log('[IMAP Mock] Sincronizzazione cartelle per account:', account.email);
+      
+      // Cartelle mock per testare l'UI
+      const mockFolders: MailFolder[] = [
+        {
+          id: `${account.id}-inbox`,
+          accountId: account.id,
+          name: 'INBOX',
+          path: 'INBOX',
+          unreadCount: 0,
+          totalCount: 0,
+          syncAt: Date.now(),
+        },
+        {
+          id: `${account.id}-sent`,
+          accountId: account.id,
+          name: 'Sent',
+          path: '[Gmail]/Sent Mail',
+          unreadCount: 0,
+          totalCount: 0,
+          syncAt: Date.now(),
+        },
+        {
+          id: `${account.id}-drafts`,
+          accountId: account.id,
+          name: 'Drafts',
+          path: '[Gmail]/Drafts',
+          unreadCount: 0,
+          totalCount: 0,
+          syncAt: Date.now(),
+        },
+        {
+          id: `${account.id}-archive`,
+          accountId: account.id,
+          name: 'Archive',
+          path: '[Gmail]/All Mail',
+          unreadCount: 0,
+          totalCount: 0,
+          syncAt: Date.now(),
+        },
+      ];
+      
+      return mockFolders;
+    } finally {
+      // Rimuovi il lock quando la chiamata è completata (sia con successo che con errore)
+      syncFoldersLocks.delete(account.id);
+      console.log('[IMAP] Lock rimosso per account:', account.email);
+    }
+  })();
   
-  return mockFolders;
+  // Aggiungi la promessa al lock
+  syncFoldersLocks.set(account.id, syncPromise);
+  console.log('[IMAP] Lock creato per account:', account.email);
+  
+  return syncPromise;
 };
 
 /**
  * Sincronizza i messaggi di una cartella
- * Nota: Questa funzione richiede imapflow e mailparser che sono disponibili solo in Node.js.
- * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
- * 
- * Per ora restituisce messaggi mock per testare l'UI.
+ * Usa i comandi Tauri se disponibili, altrimenti fallback a mock
  */
 export const syncMessages = async (
   account: Account,
   folderPath: string,
   since?: Date
 ): Promise<MailMessage[]> => {
-  // TODO: Implementare come comando Tauri Rust
+  // Prova a usare i comandi Tauri se disponibili
+  try {
+    // Controlla se siamo in ambiente Tauri - verifica che invoke sia disponibile e funzionante
+    let isTauri = false;
+    try {
+      // Prova a importare invoke direttamente
+      const { invoke } = await import('@tauri-apps/api/core');
+      if (invoke && typeof invoke === 'function') {
+        // Verifica che window.__TAURI__ esista (necessario per Tauri)
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          isTauri = true;
+        }
+      }
+    } catch {
+      // Se l'import fallisce, non siamo in Tauri
+      isTauri = false;
+    }
+    
+    // Fallback: controlla anche window.__TAURI__
+    if (!isTauri && typeof window !== 'undefined') {
+      isTauri = (window as any).__TAURI__ !== undefined || 
+                (window as any).__TAURI_INTERNALS__ !== undefined;
+    }
+    
+    console.log('[IMAP] Controllo Tauri per syncMessages:', { 
+      isTauri, 
+      hasWindow: typeof window !== 'undefined',
+      hasTAURI: typeof window !== 'undefined' ? (window as any).__TAURI__ !== undefined : false,
+    });
+    
+    if (isTauri) {
+      console.log('[IMAP] Tauri disponibile, uso comandi Rust per sincronizzare messaggi');
+      const { syncMessagesTauri } = await import('./tauri-imap');
+      const messages = await syncMessagesTauri(account, folderPath, since);
+      console.log('[IMAP] Messaggi sincronizzati da Rust:', messages.length);
+      return messages;
+    } else {
+      console.warn('[IMAP] Tauri non disponibile, uso mock. Assicurati di usare "pnpm tauri:dev" invece di "pnpm dev"');
+    }
+  } catch (error) {
+    console.error('[IMAP] Errore nei comandi Tauri, uso mock:', error);
+  }
+  
+  // Fallback a mock per sviluppo/test
   console.log('[IMAP Mock] Sincronizzazione messaggi per cartella:', folderPath, 'account:', account.email);
   
   // Messaggi mock per testare l'UI
@@ -221,7 +317,7 @@ export const syncMessages = async (
           filename: 'documento.pdf',
           contentType: 'application/pdf',
           size: 102400,
-          content: new Uint8Array(1024), // Mock content
+          content: Buffer.from(new Uint8Array(1024)), // Mock content
         },
       ],
       flags: ['\\Seen', '\\Important'],
@@ -337,10 +433,10 @@ export const syncMessages = async (
  * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
  */
 export const markMessageAsRead = async (
-  account: Account,
-  folderPath: string,
-  uid: number,
-  read: boolean
+  _account: Account,
+  _folderPath: string,
+  _uid: number,
+  _read: boolean
 ): Promise<void> => {
   // TODO: Implementare come comando Tauri Rust
   console.warn('markMessageAsRead non disponibile nel browser. Implementare come comando Tauri.');
@@ -352,9 +448,9 @@ export const markMessageAsRead = async (
  * In Tauri, questa logica dovrebbe essere implementata come comando Rust.
  */
 export const deleteMessage = async (
-  account: Account,
-  folderPath: string,
-  uid: number
+  _account: Account,
+  _folderPath: string,
+  _uid: number
 ): Promise<void> => {
   // TODO: Implementare come comando Tauri Rust
   console.warn('deleteMessage non disponibile nel browser. Implementare come comando Tauri.');

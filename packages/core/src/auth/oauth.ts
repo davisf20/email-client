@@ -79,9 +79,47 @@ const getProviderConfig = (provider: AccountProvider): OAuthConfig => {
 };
 
 /**
+ * Ottiene il redirect URI OAuth2 per un provider
+ */
+export const getOAuthRedirectUri = (provider: AccountProvider): string => {
+  const config = getProviderConfig(provider);
+  return config.redirectUri;
+};
+
+/**
+ * Ottiene l'URL di autorizzazione OAuth2 per un provider
+ */
+export const getOAuthUrl = (provider: AccountProvider): string => {
+  const config = getProviderConfig(provider);
+  
+  const params = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
+    response_type: 'code',
+    scope: config.scopes.join(' '),
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+
+  return `${config.authorizationUrl}?${params.toString()}`;
+};
+
+/**
+ * Scambia un codice OAuth con i token
+ */
+export const exchangeOAuthCode = async (
+  provider: AccountProvider,
+  code: string
+): Promise<OAuthTokens> => {
+  const config = getProviderConfig(provider);
+  return exchangeCodeForTokens(provider, config, code);
+};
+
+/**
  * Avvia il flusso OAuth2 per un provider
  * Nota: In Tauri v2, OAuth viene gestito aprendo una finestra del browser
  * e intercettando il redirect. Per ora usiamo un approccio semplificato.
+ * @deprecated Usa getOAuthUrl e exchangeOAuthCode invece per un controllo migliore
  */
 export const startOAuth2 = async (provider: AccountProvider): Promise<OAuthTokens> => {
   // Leggi la configurazione dinamicamente per assicurarti che le variabili d'ambiente siano caricate
@@ -111,32 +149,80 @@ export const startOAuth2 = async (provider: AccountProvider): Promise<OAuthToken
   if (typeof window !== 'undefined') {
     try {
       // Verifica se siamo in Tauri
-      const isTauri = (window as any).__TAURI__;
+      const isTauri = typeof window !== 'undefined' && 
+                      ((window as any).__TAURI__ !== undefined || 
+                       (window as any).__TAURI_INTERNALS__ !== undefined);
 
-      // Per Tauri e browser, usiamo lo stesso approccio con window.open
-      // perché funziona meglio per intercettare il redirect
-      {
-        // In ambiente browser normale, apriamo in una nuova finestra e intercettiamo il redirect
-        const params = new URLSearchParams({
-          client_id: config.clientId,
-          redirect_uri: config.redirectUri,
-          response_type: 'code',
-          scope: config.scopes.join(' '),
-          access_type: 'offline',
-          prompt: 'consent',
-        });
+      const params = new URLSearchParams({
+        client_id: config.clientId,
+        redirect_uri: config.redirectUri,
+        response_type: 'code',
+        scope: config.scopes.join(' '),
+        access_type: 'offline',
+        prompt: 'consent',
+      });
 
-        const authUrl = `${config.authorizationUrl}?${params.toString()}`;
-        
-        // Apri una nuova finestra per OAuth
-        const oauthWindow = window.open(authUrl, 'oauth', 'width=600,height=700');
-        
-        if (!oauthWindow) {
-          throw new Error('Impossibile aprire la finestra OAuth. Verifica che i popup non siano bloccati.');
+      const authUrl = `${config.authorizationUrl}?${params.toString()}`;
+      
+      // In Tauri, usa shell.open per aprire il browser di sistema
+      if (isTauri) {
+        try {
+          console.log('[OAuth] Tauri rilevato, uso shell.open per aprire il browser');
+          console.log('[OAuth] URL di autorizzazione:', authUrl);
+          
+          const shellModule = await new Function('return import("@tauri-apps/api/shell")')();
+          await shellModule.open(authUrl);
+          console.log('[OAuth] Browser aperto con successo');
+          
+          // Chiedi all'utente di incollare l'URL dopo il login
+          return new Promise<OAuthTokens>((resolve, reject) => {
+            // Aspetta un momento prima di mostrare il prompt per dare tempo al browser di aprire
+            setTimeout(() => {
+              const code = prompt(
+                'Completa il login nel browser.\n\n' +
+                'Dopo il login, verrai reindirizzato a una pagina.\n' +
+                'Copia l\'intero URL dalla barra degli indirizzi del browser e incollalo qui:'
+              );
+              
+              if (!code) {
+                reject(new Error('Login annullato'));
+                return;
+              }
+              
+              // Estrai il codice dall'URL
+              try {
+                const url = new URL(code);
+                const authCode = url.searchParams.get('code');
+                if (!authCode) {
+                  reject(new Error('Codice non trovato nell\'URL fornito. Assicurati di copiare l\'URL completo dalla barra degli indirizzi.'));
+                  return;
+                }
+                
+                console.log('[OAuth] Codice estratto dall\'URL, scambio con token...');
+                // Scambia il codice con i token
+                exchangeCodeForTokens(provider, config, authCode)
+                  .then(resolve)
+                  .catch(reject);
+              } catch (error) {
+                reject(new Error(`Errore nel parsing dell'URL: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Assicurati di copiare l'URL completo.`));
+              }
+            }, 1000);
+          });
+        } catch (error) {
+          console.error('[OAuth] Errore nell\'uso di shell.open:', error);
+          throw new Error(`Errore nell'apertura del browser OAuth: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
         }
+      }
+      
+      // In ambiente browser normale (o fallback da Tauri), usa window.open
+      const oauthWindow = window.open(authUrl, 'oauth', 'width=600,height=700');
+      
+      if (!oauthWindow) {
+        throw new Error('Impossibile aprire la finestra OAuth. Verifica che i popup non siano bloccati.');
+      }
 
-        // Crea una promessa per intercettare il codice
-        return new Promise<OAuthTokens>((resolve, reject) => {
+      // Crea una promessa per intercettare il codice
+      return new Promise<OAuthTokens>((resolve, reject) => {
           let hasReceivedMessage = false;
           
           // Listener per intercettare i messaggi dalla finestra OAuth
@@ -214,7 +300,6 @@ export const startOAuth2 = async (provider: AccountProvider): Promise<OAuthToken
             reject(new Error('Timeout durante l\'autorizzazione OAuth'));
           }, 5 * 60 * 1000);
         });
-      }
     } catch (error) {
       if (
         error instanceof Error &&

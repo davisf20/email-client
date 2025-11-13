@@ -2,7 +2,7 @@
  * Storage manager per account, messaggi e impostazioni
  */
 
-import { eq, and, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import type { Account, MailMessage, MailFolder, AppSettings, OAuthTokens } from '../types';
 import { encrypt, decrypt } from '../utils/encryption';
@@ -152,7 +152,34 @@ export const accountStorage = {
 
   async delete(id: string): Promise<void> {
     const db = await getDb();
+    console.log('[Storage] Rimozione account dal database:', id);
     await db.delete(schema.accounts).where(eq(schema.accounts.id, id));
+    
+    // Verifica che l'account sia stato rimosso
+    const remaining = await this.getAll();
+    const stillExists = remaining.some(a => a.id === id);
+    if (stillExists) {
+      console.error('[Storage] ERRORE: Account ancora presente dopo la rimozione:', id);
+      throw new Error('Impossibile rimuovere l\'account dal database');
+    }
+    console.log('[Storage] Account rimosso con successo dal database:', id);
+  },
+
+  async updateTokens(id: string, tokens: OAuthTokens): Promise<void> {
+    const db = await getDb();
+    const encryptedAccessToken = await encrypt(tokens.accessToken);
+    const encryptedRefreshToken = await encrypt(tokens.refreshToken);
+
+    await db
+      .update(schema.accounts)
+      .set({
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        expiresAt: tokens.expiresAt,
+        tokenType: tokens.tokenType,
+        updatedAt: Date.now(),
+      })
+      .where(eq(schema.accounts.id, id));
   },
 };
 
@@ -187,7 +214,7 @@ export const folderStorage = {
       .from(schema.folders)
       .where(eq(schema.folders.accountId, accountId));
 
-    return results.map(row => ({
+    return results.map((row: any) => ({
       id: row.id,
       accountId: row.accountId,
       name: row.name,
@@ -394,7 +421,7 @@ export const messageStorage = {
       date: new Date(row.date),
       text: row.text || undefined,
       html: row.html || undefined,
-      attachments: attachments.map(a => ({
+      attachments: attachments.map((a: any) => ({
         filename: a.filename,
         contentType: a.contentType,
         size: a.size,
@@ -417,6 +444,33 @@ export const messageStorage = {
     await db.update(schema.messages)
       .set({ isRead: read ? 1 : 0 })
       .where(eq(schema.messages.id, id));
+  },
+
+  async update(id: string, updates: Partial<MailMessage>): Promise<void> {
+    const db = await getDb();
+    const updateData: any = {};
+    
+    if (updates.folderId !== undefined) {
+      updateData.folderId = updates.folderId;
+    }
+    if (updates.isRead !== undefined) {
+      updateData.isRead = updates.isRead ? 1 : 0;
+    }
+    if (updates.isStarred !== undefined) {
+      updateData.isStarred = updates.isStarred ? 1 : 0;
+    }
+    if (updates.isImportant !== undefined) {
+      updateData.isImportant = updates.isImportant ? 1 : 0;
+    }
+    if (updates.flags !== undefined) {
+      updateData.flags = JSON.stringify(updates.flags);
+    }
+    
+    if (Object.keys(updateData).length > 0) {
+      await db.update(schema.messages)
+        .set(updateData)
+        .where(eq(schema.messages.id, id));
+    }
   },
 
   async delete(id: string): Promise<void> {

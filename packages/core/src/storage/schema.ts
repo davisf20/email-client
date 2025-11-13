@@ -3,7 +3,7 @@
  */
 
 import { sqliteTable, text, integer, blob } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
+// import { sql } from 'drizzle-orm'; // Not used currently
 
 // Tabella account
 export const accounts = sqliteTable('accounts', {

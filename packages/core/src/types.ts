@@ -70,13 +70,13 @@ export interface MailAddress {
 }
 
 export interface ComposeMessage {
-  to: string[];
-  cc?: string[];
-  bcc?: string[];
+  to: (string | MailAddress)[];
+  cc?: (string | MailAddress)[];
+  bcc?: (string | MailAddress)[];
   subject: string;
   text?: string;
   html?: string;
-  attachments?: File[];
+  attachments?: MailAttachment[];
   inReplyTo?: string;
 }
 

@@ -2,24 +2,81 @@
  * Componente ComposeModal per comporre nuove email
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Paperclip, Send } from 'lucide-react';
 import { useMailStore } from '../store/useMailStore';
 import { Button, Input, cn } from '@mail-client/ui-kit';
+import { sendEmail } from '@mail-client/core';
 
 export const ComposeModal: React.FC = () => {
-  const { isComposeOpen, setComposeOpen } = useMailStore();
+  const { isComposeOpen, setComposeOpen, currentAccountId, accounts, composeData } = useMailStore();
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
-  const handleSend = () => {
-    // TODO: Implementare invio email
-    console.log('Send email', { to, cc, bcc, subject, body });
-    setComposeOpen(false);
+  // Carica i dati di compose quando il modal si apre
+  useEffect(() => {
+    if (isComposeOpen && composeData) {
+      setTo(composeData.to || '');
+      setCc(composeData.cc || '');
+      setBcc(composeData.bcc || '');
+      setSubject(composeData.subject || '');
+      setBody(composeData.body || '');
+    } else if (!isComposeOpen) {
+      // Reset quando si chiude
+      setTo('');
+      setCc('');
+      setBcc('');
+      setSubject('');
+      setBody('');
+    }
+  }, [isComposeOpen, composeData]);
+
+  const handleSend = async () => {
+    if (!currentAccountId) {
+      alert('Please select an account first');
+      return;
+    }
+
+    const account = accounts.find((a) => a.id === currentAccountId);
+    if (!account) {
+      alert('Account not found');
+      return;
+    }
+
+    if (!to.trim()) {
+      alert('Please enter a recipient');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      await sendEmail(account, {
+        to: to.split(',').map((addr) => addr.trim()),
+        cc: cc ? cc.split(',').map((addr) => addr.trim()) : undefined,
+        bcc: bcc ? bcc.split(',').map((addr) => addr.trim()) : undefined,
+        subject: subject.trim(),
+        text: body.trim(),
+        html: body.trim().replace(/\n/g, '<br>'),
+      });
+
+      // Reset form
+      setTo('');
+      setCc('');
+      setBcc('');
+      setSubject('');
+      setBody('');
+      setComposeOpen(false);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -117,10 +174,10 @@ export const ComposeModal: React.FC = () => {
               <Button variant="secondary" onClick={() => setComposeOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSend}>
-                <Send className="h-4 w-4 mr-2" />
-                Send
-              </Button>
+                  <Button onClick={handleSend} disabled={isSending}>
+                    <Send className="h-4 w-4 mr-2" />
+                    {isSending ? 'Sending...' : 'Send'}
+                  </Button>
             </div>
           </div>
         </Dialog.Content>

@@ -24,9 +24,11 @@ interface MailState {
   // UI State
   isComposeOpen: boolean;
   isSettingsOpen: boolean;
+  composeData: { to?: string; cc?: string; bcc?: string; subject?: string; body?: string } | null;
   searchQuery: string;
   selectedTag: string | null; // Tag selezionato per il filtro
   availableTags: string[]; // Lista di tutti i tag disponibili (escluso "All")
+  isLoggingOut: boolean; // Flag per indicare che un logout è in corso
   
   // Actions
   setAccounts: (accounts: Account[]) => void;
@@ -45,12 +47,13 @@ interface MailState {
   
   setSettings: (settings: AppSettings) => void;
   
-  setComposeOpen: (open: boolean) => void;
+  setComposeOpen: (open: boolean, data?: { to?: string; cc?: string; bcc?: string; subject?: string; body?: string }) => void;
   setSettingsOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   setSelectedTag: (tag: string | null) => void;
   addAvailableTag: (tag: string) => void;
   removeAvailableTag: (tag: string) => void;
+  setIsLoggingOut: (isLoggingOut: boolean) => void;
 }
 
 export const useMailStore = create<MailState>((set) => ({
@@ -69,9 +72,11 @@ export const useMailStore = create<MailState>((set) => ({
   },
   isComposeOpen: false,
   isSettingsOpen: false,
+  composeData: null as { to?: string; cc?: string; bcc?: string; subject?: string; body?: string } | null,
   searchQuery: '',
   selectedTag: null,
   availableTags: ['Importante', 'HR'], // Tag predefiniti
+  isLoggingOut: false, // Flag per logout
   
   // Actions
   setAccounts: (accounts) => set({ accounts }),
@@ -105,7 +110,10 @@ export const useMailStore = create<MailState>((set) => ({
   
   setSettings: (settings) => set({ settings }),
   
-  setComposeOpen: (open) => set({ isComposeOpen: open }),
+  setComposeOpen: (open, data?: { to?: string; cc?: string; bcc?: string; subject?: string; body?: string }) => set({ 
+    isComposeOpen: open,
+    composeData: open && data ? data : null,
+  }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSelectedTag: (tag) => set({ selectedTag: tag }),
@@ -118,5 +126,6 @@ export const useMailStore = create<MailState>((set) => ({
   removeAvailableTag: (tag) => set((state) => ({
     availableTags: state.availableTags.filter((t) => t !== tag),
   })),
+  setIsLoggingOut: (isLoggingOut) => set({ isLoggingOut }),
 }));
 

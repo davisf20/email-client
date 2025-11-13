@@ -2,26 +2,29 @@
  * Componente TopBar per azioni globali e ricerca
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Trash2, Archive, Folder, Star, Mail, RefreshCw, Plus, X } from 'lucide-react';
 import { useMailStore } from '../store/useMailStore';
-import { useSyncMessages } from '../hooks/useMessages';
+import { useSyncMessages, useDeleteMessage, useMoveMessage } from '../hooks/useMessages';
 import { Button, Input, cn } from '@mail-client/ui-kit';
 
 export const TopBar: React.FC = () => {
   const { mutate: syncMessages, isPending: isSyncing } = useSyncMessages();
+  const { mutate: deleteMessage, isPending: isDeleting } = useDeleteMessage();
+  const { mutate: moveMessage, isPending: isMoving } = useMoveMessage();
   const { 
     currentMessageId, 
     messages, 
     updateMessage, 
-    removeMessage, 
     selectedTag, 
     setSelectedTag,
     availableTags,
     addAvailableTag,
+    folders,
   } = useMailStore();
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
 
   const currentMessage = messages.find((m) => m.id === currentMessageId);
 
@@ -31,21 +34,35 @@ export const TopBar: React.FC = () => {
 
   const handleDelete = () => {
     if (currentMessageId) {
-      removeMessage(currentMessageId);
+      deleteMessage(currentMessageId);
     }
   };
 
   const handleArchive = () => {
-    if (currentMessageId) {
-      updateMessage(currentMessageId, {
-        flags: [...(currentMessage?.flags || []), '\\Archive'],
-      });
+    if (currentMessageId && currentMessage) {
+      // Trova la cartella Archive
+      const archiveFolder = folders.find((f) => 
+        f.path.toLowerCase().includes('archive') || 
+        f.name.toLowerCase().includes('archive') ||
+        f.path.toLowerCase().includes('all mail')
+      );
+      
+      if (archiveFolder) {
+        moveMessage({ id: currentMessageId, targetFolderId: archiveFolder.id });
+      } else {
+        // Se non c'è una cartella Archive, aggiungi solo il flag
+        updateMessage(currentMessageId, {
+          flags: [...(currentMessage.flags || []), '\\Archive'],
+        });
+      }
     }
   };
 
-  const handleMove = () => {
-    // TODO: Implementare move to folder
-    console.log('Move to folder');
+  const handleMove = (targetFolderId: string) => {
+    if (currentMessageId) {
+      moveMessage({ id: currentMessageId, targetFolderId });
+      setShowMoveMenu(false);
+    }
   };
 
   const handleFlagImportant = () => {
@@ -90,14 +107,14 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <div 
-      className="h-14 flex items-center justify-between px-4 rounded-3xl bg-anti-flash-white-90"
-      style={{ 
-        WebkitAppRegion: 'no-drag'
-      }}
-    >
-      {/* Left side - Labels */}
-      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div 
+          className="h-14 flex items-center justify-between px-4 rounded-3xl bg-anti-flash-white-90"
+          style={{ 
+            WebkitAppRegion: 'no-drag' as any,
+          } as React.CSSProperties}
+        >
+          {/* Left side - Labels */}
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' as any } as React.CSSProperties}>
         <div className="flex items-center gap-1 rounded-full p-1">
           {/* Tag "All" sempre presente e non eliminabile */}
           <button
@@ -177,13 +194,13 @@ export const TopBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right side - Actions */}
-      <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          {/* Right side - Actions */}
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' as any } as React.CSSProperties}>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleDelete}
-          disabled={!currentMessageId}
+          disabled={!currentMessageId || isDeleting}
           title="Delete"
           className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
@@ -193,22 +210,38 @@ export const TopBar: React.FC = () => {
           variant="ghost"
           size="icon"
           onClick={handleArchive}
-          disabled={!currentMessageId}
+          disabled={!currentMessageId || isMoving}
           title="Archive"
           className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
         >
           <Archive className="h-4 w-4 text-black" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleMove}
-          disabled={!currentMessageId}
-          title="Move"
-          className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
-        >
-          <Folder className="h-4 w-4 text-black" />
-        </Button>
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowMoveMenu(!showMoveMenu)}
+            disabled={!currentMessageId || isMoving}
+            title="Move"
+            className="bg-silver-25 hover:bg-silver-35 text-black rounded-xl"
+          >
+            <Folder className="h-4 w-4 text-black" />
+          </Button>
+          {showMoveMenu && (
+            <div className="absolute right-0 top-full mt-2 bg-white/90 backdrop-blur-xl border border-black/10 rounded-xl shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto">
+              {folders.map((folder) => (
+                <button
+                  key={folder.id}
+                  onClick={() => handleMove(folder.id)}
+                  className="w-full text-left px-4 py-2 hover:bg-black/5 text-black text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={currentMessage?.folderId === folder.id}
+                >
+                  {folder.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"

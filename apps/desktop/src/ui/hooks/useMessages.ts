@@ -3,9 +3,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { messageStorage, syncMessages, syncFolders } from '@mail-client/core';
+import { messageStorage, syncMessages, syncFolders, markMessageReadTauri, deleteMessageTauri, moveMessageTauri } from '@mail-client/core';
 import { useMailStore } from '../store/useMailStore';
-import type { Account, MailFolder } from '@mail-client/core';
 
 export const useMessages = (folderId: string | null) => {
   const { setMessages, currentAccountId, accounts, folders } = useMailStore();
@@ -74,12 +73,26 @@ export const useMessages = (folderId: string | null) => {
         
         // Se non ci sono messaggi, sincronizza
         if (messages.length === 0) {
+          // Verifica che l'account sia ancora valido prima di sincronizzare
+          const currentState = useMailStore.getState();
+          if (!currentState.currentAccountId || currentState.currentAccountId !== currentAccountId) {
+            console.log('[useMessages] Account non più valido, annullo sincronizzazione');
+            return [];
+          }
+          
           const folder = folders.find((f) => f.id === realFolderId);
           
           if (account && folder) {
             console.log('[useMessages] Nessun messaggio trovato, sincronizzazione...');
             try {
               const syncedMessages = await syncMessages(account, folder.path);
+              
+              // Verifica di nuovo che l'account sia ancora valido dopo la sincronizzazione
+              const stateAfterSync = useMailStore.getState();
+              if (!stateAfterSync.currentAccountId || stateAfterSync.currentAccountId !== currentAccountId) {
+                console.log('[useMessages] Account cambiato durante la sincronizzazione, ignoro risultati');
+                return [];
+              }
               
               // Aggiorna i messaggi con il folderId corretto
               const messagesWithFolderId = syncedMessages.map(msg => ({
@@ -135,9 +148,23 @@ export const useMessages = (folderId: string | null) => {
       
       // Se non ci sono cartelle, sincronizza prima
       if (folders.length === 0 && account) {
+        // Verifica che l'account sia ancora valido prima di sincronizzare
+        const currentState = useMailStore.getState();
+        if (!currentState.currentAccountId || currentState.currentAccountId !== currentAccountId) {
+          console.log('[useMessages] Account non più valido, annullo sincronizzazione cartelle');
+          return [];
+        }
+        
         console.log('[useMessages] Nessuna cartella trovata, sincronizzazione...');
         try {
-          const syncedFolders = await syncFolders(account);
+          await syncFolders(account);
+          
+          // Verifica di nuovo che l'account sia ancora valido dopo la sincronizzazione
+          const stateAfterSync = useMailStore.getState();
+          if (!stateAfterSync.currentAccountId || stateAfterSync.currentAccountId !== currentAccountId) {
+            console.log('[useMessages] Account cambiato durante la sincronizzazione cartelle, ignoro risultati');
+            return [];
+          }
           // Le cartelle verranno aggiornate da App.tsx, quindi per ora continuiamo
         } catch (error) {
           console.error('[useMessages] Errore nella sincronizzazione delle cartelle:', error);
@@ -164,8 +191,23 @@ export const useMessages = (folderId: string | null) => {
           // Se non ci sono messaggi, sincronizza
           if (folderMessages.length === 0) {
             console.log('[useMessages] Nessun messaggio trovato nella cartella', targetFolder.name, ', sincronizzazione...');
+            
+            // Verifica che l'account sia ancora valido prima di sincronizzare
+            const currentState = useMailStore.getState();
+            if (!currentState.currentAccountId || currentState.currentAccountId !== currentAccountId) {
+              console.log('[useMessages] Account non più valido, annullo sincronizzazione');
+              return [];
+            }
+            
             try {
               const syncedMessages = await syncMessages(account, targetFolder.path);
+              
+              // Verifica di nuovo che l'account sia ancora valido dopo la sincronizzazione
+              const stateAfterSync = useMailStore.getState();
+              if (!stateAfterSync.currentAccountId || stateAfterSync.currentAccountId !== currentAccountId) {
+                console.log('[useMessages] Account cambiato durante la sincronizzazione, ignoro risultati');
+                return [];
+              }
               
               // Aggiorna i messaggi con il folderId corretto
               const messagesWithFolderId = syncedMessages.map(msg => ({
@@ -242,7 +284,7 @@ export const useMessages = (folderId: string | null) => {
 
 export const useSyncMessages = () => {
   const queryClient = useQueryClient();
-  const { currentAccountId, currentFolderId, accounts, folders, setFolders } = useMailStore();
+  const { currentAccountId, accounts, setFolders } = useMailStore();
   
   return useMutation({
     mutationFn: async () => {
@@ -258,9 +300,33 @@ export const useSyncMessages = () => {
       
       console.log('[useSyncMessages] Sincronizzazione account:', account.email);
       
+      // Verifica che l'account sia ancora valido prima di sincronizzare
+      const stateBeforeSync = useMailStore.getState();
+      if (!stateBeforeSync.currentAccountId || stateBeforeSync.currentAccountId !== currentAccountId || stateBeforeSync.isLoggingOut) {
+        console.log('[useSyncMessages] Account non più valido o logout in corso, annullo sincronizzazione:', {
+          hasAccount: !!stateBeforeSync.currentAccountId,
+          accountMatch: stateBeforeSync.currentAccountId === currentAccountId,
+          isLoggingOut: stateBeforeSync.isLoggingOut,
+        });
+        throw new Error('Account non più valido o logout in corso');
+      }
+      
       // Prima sincronizza le cartelle
       const syncedFolders = await syncFolders(account);
-      setFolders(syncedFolders);
+      
+      // Verifica di nuovo che l'account sia ancora valido dopo la sincronizzazione delle cartelle
+      const stateAfterFolders = useMailStore.getState();
+      if (!stateAfterFolders.currentAccountId || stateAfterFolders.currentAccountId !== currentAccountId) {
+        console.log('[useSyncMessages] Account cambiato durante la sincronizzazione cartelle, annullo');
+        throw new Error('Account cambiato durante la sincronizzazione');
+      }
+      // Aggiorna le cartelle solo se sono diverse (evita re-render non necessari)
+      // Confronta le cartelle per evitare aggiornamenti non necessari
+      const currentFolders = useMailStore.getState().folders;
+      const foldersChanged = JSON.stringify(currentFolders) !== JSON.stringify(syncedFolders);
+      if (foldersChanged) {
+        setFolders(syncedFolders);
+      }
       
       // Poi sincronizza i messaggi per ogni cartella
       const allMessages: any[] = [];
@@ -281,10 +347,7 @@ export const useSyncMessages = () => {
           allMessages.push(message);
         }
         
-        // Aggiorna il conteggio della cartella
-        await messageStorage.getByFolder(folder.id).then(msgs => {
-          // Il conteggio viene aggiornato automaticamente quando salviamo i messaggi
-        });
+        // Il conteggio viene aggiornato automaticamente quando salviamo i messaggi
       }
       
       console.log('[useSyncMessages] Sincronizzazione completata:', allMessages.length, 'messaggi');
@@ -292,6 +355,8 @@ export const useSyncMessages = () => {
       return allMessages;
     },
     onSuccess: () => {
+      // Invalida le query per aggiornare l'UI
+      // Non chiamiamo setFolders qui per evitare loop infiniti
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       queryClient.invalidateQueries({ queryKey: ['folders'] });
     },
@@ -300,15 +365,141 @@ export const useSyncMessages = () => {
 
 export const useMarkAsRead = () => {
   const queryClient = useQueryClient();
-  const { updateMessage } = useMailStore();
+  const { updateMessage, currentAccountId, accounts, folders, messages } = useMailStore();
   
   return useMutation({
     mutationFn: async ({ id, read }: { id: string; read: boolean }) => {
+      if (!currentAccountId) {
+        throw new Error('Nessun account selezionato');
+      }
+
+      const account = accounts.find((a) => a.id === currentAccountId);
+      if (!account) {
+        throw new Error('Account non trovato');
+      }
+
+      const message = messages.find((m) => m.id === id);
+      if (!message) {
+        throw new Error('Messaggio non trovato');
+      }
+
+      const folder = folders.find((f) => f.id === message.folderId);
+      if (!folder) {
+        throw new Error('Cartella non trovata');
+      }
+
+      // Aggiorna sul server IMAP
+      try {
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          await markMessageReadTauri(account, folder.path, message.uid, read);
+        }
+      } catch (error) {
+        console.error('[useMarkAsRead] Errore nella sincronizzazione IMAP:', error);
+        // Continua comunque con l'aggiornamento locale
+      }
+
+      // Aggiorna nel database locale
       await messageStorage.markAsRead(id, read);
-      updateMessage(id, { isRead: read });
+      updateMessage(id, { isRead: read, flags: read ? [...message.flags.filter(f => f !== '\\Seen'), '\\Seen'] : message.flags.filter(f => f !== '\\Seen') });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+};
+
+export const useDeleteMessage = () => {
+  const queryClient = useQueryClient();
+  const { removeMessage, currentAccountId, accounts, folders, messages } = useMailStore();
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (!currentAccountId) {
+        throw new Error('Nessun account selezionato');
+      }
+
+      const account = accounts.find((a) => a.id === currentAccountId);
+      if (!account) {
+        throw new Error('Account non trovato');
+      }
+
+      const message = messages.find((m) => m.id === id);
+      if (!message) {
+        throw new Error('Messaggio non trovato');
+      }
+
+      const folder = folders.find((f) => f.id === message.folderId);
+      if (!folder) {
+        throw new Error('Cartella non trovata');
+      }
+
+      // Elimina sul server IMAP
+      try {
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          await deleteMessageTauri(account, folder.path, message.uid);
+        }
+      } catch (error) {
+        console.error('[useDeleteMessage] Errore nella sincronizzazione IMAP:', error);
+        // Continua comunque con l'eliminazione locale
+      }
+
+      // Elimina dal database locale
+      await messageStorage.delete(id);
+      removeMessage(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+};
+
+export const useMoveMessage = () => {
+  const queryClient = useQueryClient();
+  const { updateMessage, currentAccountId, accounts, folders, messages } = useMailStore();
+  
+  return useMutation({
+    mutationFn: async ({ id, targetFolderId }: { id: string; targetFolderId: string }) => {
+      if (!currentAccountId) {
+        throw new Error('Nessun account selezionato');
+      }
+
+      const account = accounts.find((a) => a.id === currentAccountId);
+      if (!account) {
+        throw new Error('Account non trovato');
+      }
+
+      const message = messages.find((m) => m.id === id);
+      if (!message) {
+        throw new Error('Messaggio non trovato');
+      }
+
+      const folder = folders.find((f) => f.id === message.folderId);
+      if (!folder) {
+        throw new Error('Cartella non trovata');
+      }
+
+      const targetFolder = folders.find((f) => f.id === targetFolderId);
+      if (!targetFolder) {
+        throw new Error('Cartella di destinazione non trovata');
+      }
+
+      // Sposta sul server IMAP
+      try {
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          await moveMessageTauri(account, folder.path, message.uid, targetFolder.path);
+        }
+      } catch (error) {
+        console.error('[useMoveMessage] Errore nella sincronizzazione IMAP:', error);
+        throw error;
+      }
+
+      // Aggiorna nel database locale
+      await messageStorage.update(id, { folderId: targetFolderId });
+      updateMessage(id, { folderId: targetFolderId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
     },
   });
 };

@@ -4,10 +4,13 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { format, formatDistanceToNow } from 'date-fns';
-import { it } from 'date-fns/locale';
+import * as dateFns from 'date-fns';
+import * as dateFnsLocale from 'date-fns/locale/it';
+const format = dateFns.format;
+const formatDistanceToNow = dateFns.formatDistanceToNow;
+const it = dateFnsLocale.it;
 import { useMailStore } from '../store/useMailStore';
-import { useMessages } from '../hooks/useMessages';
+import { useMessages, useMarkAsRead } from '../hooks/useMessages';
 import { Avatar, cn } from '@mail-client/ui-kit';
 import { Star, Paperclip, ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import type { MailMessage } from '@mail-client/core';
@@ -47,6 +50,7 @@ export const MailList: React.FC = () => {
     availableTags,
   } = useMailStore();
   const { isLoading } = useMessages(currentFolderId);
+  const { mutate: markAsRead } = useMarkAsRead();
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
 
   // Filtra i messaggi in base alla cartella e alla ricerca
@@ -160,7 +164,6 @@ export const MailList: React.FC = () => {
 
       // Il primo è l'ultimo messaggio (più recente)
       const latestMessage = threadMessages[0];
-      const otherMessages = threadMessages.slice(1);
 
       groups.push({
         threadId,
@@ -274,7 +277,13 @@ export const MailList: React.FC = () => {
                     message={group.latestMessage}
                     isSelected={currentMessageId === group.latestMessage.id}
                     formatDate={formatDate}
-                    onSelect={() => setCurrentMessage(group.latestMessage.id)}
+                    onSelect={() => {
+                      setCurrentMessage(group.latestMessage.id);
+                      // Marca come letto quando si seleziona
+                      if (!group.latestMessage.isRead) {
+                        markAsRead({ id: group.latestMessage.id, read: true });
+                      }
+                    }}
                     hasThread={hasMultipleMessages}
                     isThreadExpanded={isExpanded}
                     onToggleThread={() => toggleThread(group.threadId)}
@@ -291,7 +300,13 @@ export const MailList: React.FC = () => {
                           message={message}
                           isSelected={currentMessageId === message.id}
                           formatDate={formatDate}
-                          onSelect={() => setCurrentMessage(message.id)}
+                          onSelect={() => {
+                            setCurrentMessage(message.id);
+                            // Marca come letto quando si seleziona
+                            if (!message.isRead) {
+                              markAsRead({ id: message.id, read: true });
+                            }
+                          }}
                           isThreadMessage={true}
                           updateMessage={updateMessage}
                           availableTags={availableTags}

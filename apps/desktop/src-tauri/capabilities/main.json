@@ -1,0 +1,27 @@
+{
+  "identifier": "main-capability",
+  "description": "Main window capability with shell access",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "dialog:default",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        {
+          "cmd": "open",
+          "args": [
+            {
+              "validator": ".*"
+            }
+          ],
+          "sidecar": false
+        }
+      ]
+    }
+  ]
+}
+

@@ -250,7 +250,7 @@ const createIndexedDbWrapper = (db: IDBDatabase): any => {
           const valuesArray = Array.isArray(values) ? values : [values];
           
           return {
-            onConflictDoUpdate: (options: any) => ({
+            onConflictDoUpdate: (_options: any) => ({
               set: async (updates: any) => {
                 const transaction = db.transaction([storeName], 'readwrite');
                 const store = transaction.objectStore(storeName);
@@ -496,6 +496,21 @@ const createIndexedDbWrapper = (db: IDBDatabase): any => {
     delete: (table: any) => ({
       where: async (condition: any) => {
         const storeName = getStoreName(table);
+        console.log('[IndexedDB Delete] Store:', storeName);
+        console.log('[IndexedDB Delete] Condition type:', typeof condition);
+        console.log('[IndexedDB Delete] Condition keys:', condition ? Object.keys(condition) : 'null');
+        if (condition && condition.queryChunks) {
+          console.log('[IndexedDB Delete] queryChunks length:', condition.queryChunks.length);
+          console.log('[IndexedDB Delete] queryChunks:', condition.queryChunks);
+          // Log ogni chunk individualmente per evitare problemi di serializzazione
+          condition.queryChunks.forEach((chunk: any, index: number) => {
+            try {
+              console.log(`[IndexedDB Delete] queryChunks[${index}]:`, typeof chunk === 'object' ? { type: typeof chunk, keys: Object.keys(chunk || {}), value: chunk } : chunk);
+            } catch (e) {
+              console.log(`[IndexedDB Delete] queryChunks[${index}]:`, typeof chunk, chunk);
+            }
+          });
+        }
         const transaction = db.transaction([storeName], 'readwrite');
         const store = transaction.objectStore(storeName);
         
@@ -505,26 +520,123 @@ const createIndexedDbWrapper = (db: IDBDatabase): any => {
           request.onerror = () => reject(request.error);
         }) as any[];
         
+        console.log('[IndexedDB Delete] Tutti gli elementi nel store:', all.length, all.map((item: any) => ({ id: item.id, email: item.email })));
+        
         let toDelete: any[] = [];
         if (condition) {
+          // Prova diversi formati di condizione Drizzle
+          let column: string | undefined;
+          let value: any;
+          
+          // Formato 1: condition._.op === 'eq'
           if (condition._ && condition._.op === 'eq') {
-            const column = condition._.left?.name || condition._.left?.column?.name;
-            const value = condition._.right?.value;
-            if (column && value !== undefined) {
-              toDelete = all.filter((row: any) => row[column] === value);
+            column = condition._.left?.name || condition._.left?.column?.name;
+            value = condition._.right?.value;
+          }
+          // Formato 2: _SQL con queryChunks
+          else if (condition.queryChunks && Array.isArray(condition.queryChunks)) {
+            console.log('[IndexedDB Delete] Parsing _SQL queryChunks, length:', condition.queryChunks.length);
+            const chunks = condition.queryChunks;
+            
+            // Helper per estrarre il valore reale da un chunk
+            const extractValue = (chunk: any): any => {
+              if (chunk === null || chunk === undefined) return chunk;
+              if (typeof chunk !== 'object') return chunk;
+              
+              // Se ha una proprietà value, estraila
+              if (chunk.value !== undefined) {
+                return chunk.value;
+              }
+              
+              // Altrimenti restituisci il chunk stesso
+              return chunk;
+            };
+            
+            // Cerca il pattern: column object, '=', value
+            // Pattern tipico: StringChunk("accounts"), SQLiteText("."), StringChunk("id"), Param(value), StringChunk(" = ?")
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              
+              // Cerca un Param che contiene il valore
+              if (chunk && typeof chunk === 'object' && chunk.brand && chunk.value !== undefined) {
+                // Questo è probabilmente il Param con il valore
+                const paramValue = extractValue(chunk);
+                
+                // Cerca indietro per trovare il nome della colonna
+                // Di solito è nel chunk precedente o prima ancora
+                for (let j = Math.max(0, i - 3); j < i; j++) {
+                  const prevChunk = chunks[j];
+                  if (prevChunk && typeof prevChunk === 'object') {
+                    // Prova a estrarre il nome della colonna
+                    if (prevChunk.value && typeof prevChunk.value === 'string' && prevChunk.value === 'id') {
+                      column = 'id';
+                      value = paramValue;
+                      console.log('[IndexedDB Delete] Trovato pattern Param:', { column, value, chunkIndex: i });
+                      break;
+                    }
+                    // Cerca anche in strutture più complesse
+                    if (prevChunk.name) {
+                      column = prevChunk.name;
+                      value = paramValue;
+                      console.log('[IndexedDB Delete] Trovato pattern con name:', { column, value, chunkIndex: i });
+                      break;
+                    }
+                  }
+                }
+                
+                if (column && value !== undefined) break;
+              }
             }
+            
+            // Fallback: cerca direttamente un Param e assumi che la colonna sia 'id'
+            if (!column) {
+              for (const chunk of chunks) {
+                if (chunk && typeof chunk === 'object' && chunk.brand && chunk.value !== undefined) {
+                  column = 'id'; // Assumiamo che sia sempre 'id' per i delete
+                  value = extractValue(chunk);
+                  console.log('[IndexedDB Delete] Trovato pattern fallback (Param):', { column, value });
+                  break;
+                }
+              }
+            }
+          }
+          
+          console.log('[IndexedDB Delete] Parsing condition risultato:', { column, value, conditionType: condition._ ? 'standard' : condition.queryChunks ? '_SQL' : 'unknown' });
+          
+          if (column && value !== undefined) {
+            toDelete = all.filter((row: any) => row[column] === value);
+            console.log('[IndexedDB Delete] Elementi da eliminare:', toDelete.length, toDelete.map((item: any) => ({ id: item.id, email: item.email })));
+          } else {
+            console.warn('[IndexedDB Delete] Impossibile parsare la condizione, elimino tutti gli elementi');
+            toDelete = all;
           }
         } else {
           toDelete = all;
         }
         
         for (const item of toDelete) {
+          const keyToDelete = item.id || item.key;
+          console.log('[IndexedDB Delete] Eliminazione elemento con chiave:', keyToDelete, 'Item:', item);
           await new Promise((resolve, reject) => {
-            const request = store.delete(item.id || item.key);
-            request.onsuccess = () => resolve(undefined);
-            request.onerror = () => reject(request.error);
+            const request = store.delete(keyToDelete);
+            request.onsuccess = () => {
+              console.log('[IndexedDB Delete] Elemento eliminato con successo:', keyToDelete);
+              resolve(undefined);
+            };
+            request.onerror = () => {
+              console.error('[IndexedDB Delete] Errore nell\'eliminazione:', request.error);
+              reject(request.error);
+            };
           });
         }
+        
+        // Verifica che gli elementi siano stati eliminati
+        const remaining = await new Promise((resolve, reject) => {
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        }) as any[];
+        console.log('[IndexedDB Delete] Elementi rimanenti nel store:', remaining.length, remaining.map((item: any) => ({ id: item.id, email: item.email })));
       },
     }),
   };

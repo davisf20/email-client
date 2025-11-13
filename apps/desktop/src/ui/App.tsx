@@ -2,8 +2,7 @@
  * Componente principale dell'applicazione
  */
 
-import React, { useEffect } from 'react';
-import { useAccounts } from './hooks/useAccounts';
+import React, { useEffect, useRef } from 'react';
 import { TopBar } from './components/TopBar';
 import { MailList } from './components/MailList';
 import { MailViewer } from './components/MailViewer';
@@ -11,6 +10,7 @@ import { ComposeModal } from './components/ComposeModal';
 import { FloatingMenu } from './components/FloatingMenu';
 import { useMailStore } from './store/useMailStore';
 import { syncFolders } from '@mail-client/core';
+import { useAutoSync } from './hooks/useAutoSync';
 
 // Import dinamico per evitare problemi con Vite
 const getWindowModule = async () => {
@@ -25,8 +25,11 @@ const getWindowModule = async () => {
 };
 
 const App: React.FC = () => {
-  const { data: accounts } = useAccounts();
-  const { setFolders, currentAccountId, accounts: storeAccounts, currentFolderId, setCurrentFolder } = useMailStore();
+  const { setFolders, currentAccountId, accounts: storeAccounts, currentFolderId, setCurrentFolder, settings } = useMailStore();
+  const foldersLoadedRef = useRef<string | null>(null);
+  
+  // Avvia sincronizzazione automatica
+  useAutoSync(settings.syncInterval);
 
   // Imposta la cartella di default
   useEffect(() => {
@@ -35,26 +38,59 @@ const App: React.FC = () => {
     }
   }, [currentFolderId, setCurrentFolder]);
 
-  // Carica le cartelle quando cambia l'account
+  // Carica le cartelle quando cambia l'account (solo una volta per account)
+  // La sincronizzazione automatica si occuperà di aggiornare le cartelle
   useEffect(() => {
-    if (currentAccountId && storeAccounts.length > 0) {
+    // Se non c'è un account selezionato, pulisci le cartelle e resetta il flag
+    if (!currentAccountId) {
+      console.log('[App] Nessun account selezionato, pulizia cartelle');
+      setFolders([]);
+      foldersLoadedRef.current = null;
+      return;
+    }
+    
+    // Reset il flag quando cambia l'account
+    if (foldersLoadedRef.current !== currentAccountId) {
+      foldersLoadedRef.current = null;
+    }
+    
+    if (currentAccountId && storeAccounts.length > 0 && foldersLoadedRef.current !== currentAccountId) {
       const account = storeAccounts.find((a) => a.id === currentAccountId);
       if (account) {
-        // Sincronizza le cartelle quando cambia l'account
-        syncFolders(account).then((folders) => {
-          setFolders(folders);
+        // Verifica che l'account sia ancora valido prima di sincronizzare
+        const currentState = useMailStore.getState();
+        if (currentState.currentAccountId !== currentAccountId) {
+          console.log('[App] Account cambiato durante il caricamento, annullo sync');
+          return;
+        }
+        
+        // Carica le cartelle solo se non sono già state caricate per questo account
+        foldersLoadedRef.current = currentAccountId;
+        console.log('[App] Caricamento cartelle per account:', account.email);
+        syncFolders(account).then((syncedFolders) => {
+          // Verifica di nuovo che l'account sia ancora valido dopo la sincronizzazione
+          const stateAfterSync = useMailStore.getState();
+          if (stateAfterSync.currentAccountId !== currentAccountId) {
+            console.log('[App] Account cambiato durante la sincronizzazione, ignoro risultati');
+            return;
+          }
+          
+          setFolders(syncedFolders);
           // Se non c'è una cartella selezionata o è una cartella di default, seleziona la inbox
           if (!currentFolderId || currentFolderId === 'inbox') {
-            const inboxFolder = folders.find((f) => f.path === 'INBOX' || f.name === 'INBOX');
+            const inboxFolder = syncedFolders.find((f) => f.path === 'INBOX' || f.name === 'INBOX');
             if (inboxFolder) {
               setCurrentFolder(inboxFolder.id);
-            } else if (folders.length > 0) {
-              setCurrentFolder(folders[0].id);
+            } else if (syncedFolders.length > 0) {
+              setCurrentFolder(syncedFolders[0].id);
             }
           }
         }).catch((error) => {
-          console.error('Errore nel caricamento delle cartelle:', error);
+          console.error('[App] Errore nel caricamento delle cartelle:', error);
+          foldersLoadedRef.current = null; // Reset in caso di errore
         });
+      } else {
+        console.log('[App] Account non trovato nello store:', currentAccountId);
       }
     }
   }, [currentAccountId, storeAccounts, setFolders, currentFolderId, setCurrentFolder]);
@@ -66,12 +102,16 @@ const App: React.FC = () => {
       if (!windowModule) return;
       
       try {
-        const appWindow = windowModule.appWindow;
         // Prova ad applicare l'effetto blur usando l'API nativa di Tauri 2.0
-        await appWindow.setEffects({
-          effects: ['blur'],
-          state: 'active',
-        });
+        // Nota: L'API potrebbe non essere disponibile in tutte le versioni
+        const windowModule = await import('@tauri-apps/api/window');
+        const appWindow = (windowModule as any).appWindow || (windowModule as any).default?.appWindow;
+        if (appWindow && typeof appWindow.setEffects === 'function') {
+          await appWindow.setEffects({
+            effects: ['blur'],
+            state: 'active',
+          });
+        }
       } catch (error) {
         // Se l'API non è disponibile, usa solo CSS
         console.log('Effetto blur nativo non disponibile, usando solo CSS');
@@ -91,16 +131,16 @@ const App: React.FC = () => {
       }}
     >
       {/* Barra draggable superiore per macOS - permette di trascinare la finestra */}
-      <div 
-        className="h-8 w-full flex-shrink-0"
-        style={{ 
-          WebkitAppRegion: 'drag',
-          background: 'transparent',
-          paddingTop: '8px',
-          paddingLeft: '12px',
-          paddingRight: '12px'
-        }}
-      />
+          <div 
+            className="h-8 w-full flex-shrink-0"
+            style={{ 
+              WebkitAppRegion: 'drag' as any,
+              background: 'transparent',
+              paddingTop: '8px',
+              paddingLeft: '12px',
+              paddingRight: '12px'
+            } as React.CSSProperties}
+          />
       <div 
         className="flex-1 flex flex-col p-4 gap-4 overflow-hidden" 
         style={{ 
